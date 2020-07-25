@@ -1,0 +1,12 @@
+[package]
+name = "gxi-workspace"
+version = "0.1.0"
+edition = "2018"
+authors = ["Brian Vincent <brainn@gmail.com>"]
+homepage = "https://github.com/bvinc/gxi"
+license = "MIT"
+
+[dependencies]
+log = "0.4"
+ropey = "1.2"
+unicode-segmentation = "1.3"
