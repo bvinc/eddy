@@ -2,6 +2,8 @@
 members = [
     "gxi",
     "gxi-workspace",
+    "eddy-ts",
+    "eddy-highlight"
 ]
 
 [profile.release]

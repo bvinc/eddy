@@ -34,6 +34,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env::{args, home_dir};
 use std::include_str;
+use std::io;
 use std::path::PathBuf;
 use std::rc::Rc;
 use syntect::highlighting::ThemeSettings;
@@ -126,14 +127,14 @@ impl Update for Win {
             Msg::CloseView(view_id) => self.close_view(&view_id),
             Msg::Find => self.find(),
             Msg::Prefs => self.prefs(),
-            Msg::New => self.handle_new_button(),
+            Msg::New => self.handle_new_button().expect("TODO"),
             Msg::Open => self.handle_open_button(),
-            Msg::OpenFile(rt) => self.handle_open_file(rt),
+            Msg::OpenFile(rt) => self.handle_open_file(rt).expect("TODO"),
             Msg::Save => self.save(),
             Msg::SaveAs => self.save_as(),
             Msg::SaveFile(rt) => self.handle_save_file(rt),
             Msg::Shutdown => {}
-            Msg::Quit => self.app_win.destroy(),
+            Msg::Quit => self.model.application.quit(),
         }
     }
 }
@@ -154,7 +155,7 @@ impl Widget for Win {
         connect!(relm, application, connect_shutdown(_), Msg::Shutdown);
 
         let glade_src = include_str!("ui/gxi.glade");
-        let builder = gtk::Builder::new_from_string(glade_src);
+        let builder = gtk::Builder::from_string(glade_src);
 
         let app_win: ApplicationWindow = builder.get_object("appwindow").unwrap();
         let notebook: Notebook = builder.get_object("notebook").unwrap();
@@ -324,10 +325,14 @@ impl Widget for Win {
 }
 
 impl Win {
-    pub fn handle_new_button(&mut self) {
+    pub fn show_result(&mut self, res: Result<(), io::Error>) {
+        // TODO show an error if one exists
+    }
+    pub fn handle_new_button(&mut self) -> Result<(), io::Error> {
         trace!("handle new button");
-        let view_id = self.model.workspace.borrow_mut().new_view(None);
+        let view_id = self.model.workspace.borrow_mut().new_view(None)?;
         self.new_view_response(view_id, None);
+        Ok(())
     }
 
     pub fn handle_open_button(&mut self) {
@@ -358,17 +363,22 @@ impl Win {
     }
 
     // This is called in response to the FileChooserDialog
-    pub fn handle_open_file(&mut self, rt: ResponseType) {
+    pub fn handle_open_file(&mut self, rt: ResponseType) -> Result<(), io::Error> {
         debug!("handle open file {:?}", rt);
         self.open_dialog.hide();
         if rt != ResponseType::Ok {
-            return;
+            return Ok(());
         }
         if let Some(filename) = self.open_dialog.get_filename() {
             let file_name = PathBuf::from(filename.to_string_lossy().to_string());
-            let view_id = self.model.workspace.borrow_mut().new_view(Some(&file_name));
+            let view_id = self
+                .model
+                .workspace
+                .borrow_mut()
+                .new_view(Some(&file_name))?;
             self.new_view_response(view_id, Some(file_name));
         }
+        Ok(())
     }
 
     // This is called in response to the FileChooserDialog

@@ -3,13 +3,14 @@ use crate::scrollable_drawing_area::ScrollableDrawingArea;
 use crate::theme::{set_source_color, Theme};
 use crate::MainState;
 use cairo::Context;
-use gdk::enums::key;
+use gdk::keys::constants as key;
 use gdk::EventMask;
 use gdk::*;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{self, *};
 use gtk::{prelude::WidgetExtManual, BoxExt, Inhibit, WidgetExt};
+use gxi_workspace::style::{Attr, AttrSpan, Color};
 use gxi_workspace::Workspace;
 use log::debug;
 use log::*;
@@ -24,6 +25,7 @@ use std::cmp::{max, min};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Instant;
 use std::u32;
 
 #[derive(Clone)]
@@ -178,7 +180,7 @@ impl Widget for EditView {
         da.set_can_focus(true);
 
         let find_rep_src = include_str!("../ui/find_replace.glade");
-        let find_rep_builder = Builder::new_from_string(find_rep_src);
+        let find_rep_builder = Builder::from_string(find_rep_src);
         let search_bar: SearchBar = find_rep_builder.get_object("search_bar").unwrap();
         let replace_expander: Expander = find_rep_builder.get_object("replace_expander").unwrap();
         let replace_revealer: Revealer = find_rep_builder.get_object("replace_revealer").unwrap();
@@ -211,7 +213,7 @@ impl Widget for EditView {
         let tab_hbox = gtk::Box::new(Orientation::Horizontal, 5);
         let label = Label::new(Some(""));
         tab_hbox.add(&label);
-        let close_button = Button::new_from_icon_name(Some("window-close"), IconSize::SmallToolbar);
+        let close_button = Button::from_icon_name(Some("window-close"), IconSize::SmallToolbar);
         tab_hbox.add(&close_button);
         tab_hbox.show_all();
 
@@ -226,7 +228,7 @@ impl Widget for EditView {
         }
 
         let font_desc = FontDescription::from_string("Inconsolata 20");
-        let pango_ctx = da.get_pango_context().expect("failed to get pango ctx");
+        let pango_ctx = da.get_pango_context();
         for family in pango_ctx.list_families() {
             if !family.is_monospace() {
                 continue;
@@ -246,9 +248,7 @@ impl Widget for EditView {
             .expect("failed to load font set");
         let metrics = fontset.get_metrics().expect("failed to load font metrics");
         debug!("metrics: {}", metrics.get_approximate_digit_width());
-        let gutter_pango_ctx = line_da
-            .get_pango_context()
-            .expect("failed to get pango ctx");
+        let gutter_pango_ctx = line_da.get_pango_context();
         gutter_pango_ctx.set_font_description(&font_desc);
 
         // cr.select_font_face("Inconsolata", ::cairo::enums::FontSlant::Normal, ::cairo::enums::FontWeight::Normal);
@@ -335,7 +335,7 @@ impl Widget for EditView {
             relm,
             search_entry,
             connect_search_changed(w),
-            Msg::SearchChanged(w.get_text().map(|gs| gs.as_str().to_owned()))
+            Msg::SearchChanged(Some(w.get_text().as_str().to_owned()))
         );
 
         connect!(relm, search_entry, connect_activate(_), Msg::FindNext);
@@ -416,10 +416,10 @@ impl EditView {
             ek.get_state(),
             ek.get_length(),
             ek.get_group(),
-            ::gdk::keyval_to_unicode(ek.get_keyval())
+            ek.get_keyval().to_unicode(),
         );
         let view_id = state.model.view_id;
-        let ch = ::gdk::keyval_to_unicode(ek.get_keyval());
+        let ch = ek.get_keyval().to_unicode();
 
         let alt = ek.get_state().contains(ModifierType::MOD1_MASK);
         let ctrl = ek.get_state().contains(ModifierType::CONTROL_MASK);
@@ -428,205 +428,145 @@ impl EditView {
         let norm = !alt && !ctrl && !meta;
 
         match ek.get_keyval() {
-            key::Delete if norm => state
-                .model
-                .workspace
-                .borrow_mut()
-                .view(view_id)
-                .delete_forward(),
-            key::BackSpace if norm => state
-                .model
-                .workspace
-                .borrow_mut()
-                .view(view_id)
-                .delete_backward(),
+            key::Delete if norm => state.model.workspace.borrow_mut().delete_forward(view_id),
+            key::BackSpace if norm => state.model.workspace.borrow_mut().delete_backward(view_id),
             key::Return | key::KP_Enter => {
-                state
-                    .model
-                    .workspace
-                    .borrow_mut()
-                    .view(view_id)
-                    .insert_newline();
+                state.model.workspace.borrow_mut().insert_newline(view_id);
             }
-            key::Tab if norm && !shift => state
-                .model
-                .workspace
-                .borrow_mut()
-                .view(view_id)
-                .insert_tab(),
-            key::Up if norm && !shift => state.model.workspace.borrow_mut().view(view_id).move_up(),
-            key::Down if norm && !shift => {
-                state.model.workspace.borrow_mut().view(view_id).move_down()
-            }
-            key::Left if norm && !shift => {
-                state.model.workspace.borrow_mut().view(view_id).move_left()
-            }
-            key::Right if norm && !shift => state
-                .model
-                .workspace
-                .borrow_mut()
-                .view(view_id)
-                .move_right(),
+            key::Tab if norm && !shift => state.model.workspace.borrow_mut().insert_tab(view_id),
+            key::Up if norm && !shift => state.model.workspace.borrow_mut().move_up(view_id),
+            key::Down if norm && !shift => state.model.workspace.borrow_mut().move_down(view_id),
+            key::Left if norm && !shift => state.model.workspace.borrow_mut().move_left(view_id),
+            key::Right if norm && !shift => state.model.workspace.borrow_mut().move_right(view_id),
             key::Up if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_up_and_modify_selection();
+                    .move_up_and_modify_selection(view_id);
             }
             key::Down if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_down_and_modify_selection();
+                    .move_down_and_modify_selection(view_id);
             }
             key::Left if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_left_and_modify_selection();
+                    .move_left_and_modify_selection(view_id);
             }
             key::Right if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_right_and_modify_selection();
+                    .move_right_and_modify_selection(view_id);
             }
             key::Left if ctrl && !shift => {
-                state
-                    .model
-                    .workspace
-                    .borrow_mut()
-                    .view(view_id)
-                    .move_word_left();
+                state.model.workspace.borrow_mut().move_word_left(view_id);
             }
             key::Right if ctrl && !shift => {
-                state
-                    .model
-                    .workspace
-                    .borrow_mut()
-                    .view(view_id)
-                    .move_word_right();
+                state.model.workspace.borrow_mut().move_word_right(view_id);
             }
             key::Left if ctrl && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_word_left_and_modify_selection();
+                    .move_word_left_and_modify_selection(view_id);
             }
             key::Right if ctrl && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_word_right_and_modify_selection();
+                    .move_word_right_and_modify_selection(view_id);
             }
             key::Home if norm && !shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_left_end_of_line();
+                    .move_to_left_end_of_line(view_id);
             }
             key::End if norm && !shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_right_end_of_line();
+                    .move_to_right_end_of_line(view_id);
             }
             key::Home if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_left_end_of_line_and_modify_selection();
+                    .move_to_left_end_of_line_and_modify_selection(view_id);
             }
             key::End if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_right_end_of_line_and_modify_selection();
+                    .move_to_right_end_of_line_and_modify_selection(view_id);
             }
             key::Home if ctrl && !shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_beginning_of_document();
+                    .move_to_beginning_of_document(view_id);
             }
             key::End if ctrl && !shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_end_of_document();
+                    .move_to_end_of_document(view_id);
             }
             key::Home if ctrl && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_beginning_of_document_and_modify_selection();
+                    .move_to_beginning_of_document_and_modify_selection(view_id);
             }
             key::End if ctrl && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .move_to_end_of_document_and_modify_selection();
+                    .move_to_end_of_document_and_modify_selection(view_id);
             }
             key::Page_Up if norm && !shift => {
-                state.model.workspace.borrow_mut().view(view_id).page_up();
+                state.model.workspace.borrow_mut().page_up(view_id);
             }
             key::Page_Down if norm && !shift => {
-                state.model.workspace.borrow_mut().view(view_id).page_down();
+                state.model.workspace.borrow_mut().page_down(view_id);
             }
             key::Page_Up if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .page_up_and_modify_selection();
+                    .page_up_and_modify_selection(view_id);
             }
             key::Page_Down if norm && shift => {
                 state
                     .model
                     .workspace
                     .borrow_mut()
-                    .view(view_id)
-                    .page_down_and_modify_selection();
+                    .page_down_and_modify_selection(view_id);
             }
             _ => {
                 if let Some(ch) = ch {
                     match ch {
                         'a' if ctrl => {
-                            state
-                                .model
-                                .workspace
-                                .borrow_mut()
-                                .view(view_id)
-                                .select_all();
+                            state.model.workspace.borrow_mut().select_all(view_id);
                         }
                         'c' if ctrl => {
                             // self.do_copy(view_id);
@@ -644,10 +584,10 @@ impl EditView {
                             // self.do_cut(view_id);
                         }
                         'z' if ctrl => {
-                            state.model.workspace.borrow_mut().view(view_id).undo();
+                            state.model.workspace.borrow_mut().undo(view_id);
                         }
                         'Z' if ctrl && shift => {
-                            state.model.workspace.borrow_mut().view(view_id).redo();
+                            state.model.workspace.borrow_mut().redo(view_id);
                         }
                         c if (norm) && c >= '\u{0020}' => {
                             debug!("inserting key");
@@ -655,8 +595,7 @@ impl EditView {
                                 .model
                                 .workspace
                                 .borrow_mut()
-                                .view(view_id)
-                                .insert(&c.to_string());
+                                .insert(view_id, &c.to_string());
                         }
                         _ => {
                             debug!("unhandled key: {:?}", ch);
@@ -672,7 +611,7 @@ impl EditView {
         Clipboard::get(&SELECTION_CLIPBOARD).request_text(move |_, text| {
             if let Some(text) = text {
                 // workspace.borrow_mut().view(view_id).paste(text);
-                workspace.borrow_mut().view(view_id).insert(text);
+                workspace.borrow_mut().insert(view_id, text);
             }
         });
         state.line_da.queue_draw();
@@ -686,10 +625,9 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
     let da_height = da.get_allocated_height();
 
     let mut workspace = state.model.workspace.borrow_mut();
-    let view = workspace.view(state.model.view_id);
-    let rope = view.rope_clone();
+    let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
 
-    let num_lines = rope.len_lines();
+    let num_lines = buffer.len_lines();
 
     let vadj = state.vadj.clone();
     // let hadj = self.hadj.clone();
@@ -704,7 +642,7 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
 
     // Just get the gutter size
     let mut gutter_size = 0.0;
-    let pango_ctx = da.get_pango_context().expect("failed to get pango ctx");
+    let pango_ctx = da.get_pango_context();
     let linecount_layout = create_layout_for_linecount(&pango_ctx, 0, padding);
     update_layout(cr, &linecount_layout);
     // show_layout(cr, &linecount_layout);
@@ -718,7 +656,13 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
     da.set_size_request(gutter_size, 0);
 
     // Draw the gutter background
-    set_source_color(cr, state.model.theme.gutter);
+    // set_source_color(cr, state.model.theme.gutter);
+    cr.set_source_rgba(
+        text_theme.bg.r_f64(),
+        text_theme.bg.g_f64(),
+        text_theme.bg.b_f64(),
+        1.0,
+    );
     cr.rectangle(0.0, 0.0, f64::from(da_width), f64::from(da_height));
     cr.fill();
 
@@ -726,8 +670,15 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
         // Keep track of the starting x position
         cr.move_to(0.0, state.font_height * (i as f64) - vadj.get_value());
 
-        set_source_color(cr, state.model.theme.gutter_foreground);
-        let pango_ctx = da.get_pango_context().expect("failed to get pango ctx");
+        // set_source_color(cr, state.model.theme.gutter_foreground);
+        cr.set_source_rgba(
+            text_theme.fg.r_f64(),
+            text_theme.fg.g_f64(),
+            text_theme.fg.b_f64(),
+            1.0,
+        );
+
+        let pango_ctx = da.get_pango_context();
         let linecount_layout = create_layout_for_linecount(&pango_ctx, i + 1, padding);
         update_layout(cr, &linecount_layout);
         show_layout(cr, &linecount_layout);
@@ -748,6 +699,7 @@ fn create_layout_for_linecount(
 }
 
 fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
+    let draw_start = Instant::now();
     // let foreground = self.model.main_state.borrow().theme.foreground;
     let theme = &state.model.theme;
     let da = state.da.clone();
@@ -756,8 +708,8 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     let da_height = state.da.get_allocated_height();
 
     let mut workspace = state.model.workspace.borrow_mut();
-    let view = workspace.view(state.model.view_id);
-    let rope = view.rope_clone();
+    let view_id = state.model.view_id;
+    let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
     //debug!("Drawing");
     // cr.select_font_face("Mono", ::cairo::enums::FontSlant::Normal, ::cairo::enums::FontWeight::Normal);
@@ -766,7 +718,7 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     // font_options.set_hint_style(HintStyle::Full);
 
     // let (text_width, text_height) = self.get_text_size();
-    let num_lines = rope.len_lines();
+    let num_lines = buffer.len_lines();
 
     let vadj = state.vadj.clone();
     let hadj = state.hadj.clone();
@@ -777,26 +729,39 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     let last_line = min(last_line, num_lines);
     let visible_lines = first_line..last_line;
 
-    let pango_ctx = state.da.get_pango_context().unwrap();
+    let pango_ctx = state.da.get_pango_context();
 
     // Draw background
-    set_source_color(cr, theme.background);
+    // set_source_color(cr, text_theme.background);
+    cr.set_source_rgba(
+        text_theme.bg.r_f64(),
+        text_theme.bg.g_f64(),
+        text_theme.bg.b_f64(),
+        1.0,
+    );
     cr.rectangle(0.0, 0.0, f64::from(da_width), f64::from(da_height));
     cr.fill();
 
-    set_source_color(cr, theme.foreground);
+    // set_source_color(cr, theme.foreground);
+    cr.set_source_rgba(
+        text_theme.fg.r_f64(),
+        text_theme.fg.g_f64(),
+        text_theme.fg.b_f64(),
+        1.0,
+    );
 
     // Highlight cursor lines
     // for i in first_line..last_line {
     //     cr.set_source_rgba(0.8, 0.8, 0.8, 1.0);
     //     if let Some(line) = self.line_cache.get_line(i) {
-
     //         if !line.cursor().is_empty() {
     //             cr.set_source_rgba(0.23, 0.23, 0.23, 1.0);
-    //             cr.rectangle(0f64,
-    //                 font_extents.height*((i+1) as f64) - font_extents.ascent - vadj.get_value(),
+    //             cr.rectangle(
+    //                 0f64,
+    //                 font_extents.height * ((i + 1) as f64) - font_extents.ascent - vadj.get_value(),
     //                 da_width as f64,
-    //                 font_extents.ascent + font_extents.descent);
+    //                 font_extents.ascent + font_extents.descent,
+    //             );
     //             cr.fill();
     //         }
     //     }
@@ -804,15 +769,50 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
 
     // Draw the selection highlight background
     cr.set_source_rgba(1.0, 1.0, 0.5, 1.0);
-    for sel in &view.selections {}
+
+    // let sel_iter = buffer.selections(view_id).iter();
+    for sel in buffer.selections(view_id) {
+        let r = sel.range();
+
+        let start_line = buffer.char_to_line(r.start);
+        let end_line = buffer.char_to_line(r.end);
+        let start_x = r.start - buffer.line_to_char(start_line);
+        let end_x = r.end - buffer.line_to_char(end_line);
+
+        for i in start_line..=end_line {
+            let start_x = if i == start_line {
+                (r.start - buffer.line_to_char(start_line)) as f64 * state.font_width
+            } else {
+                0f64
+            };
+            let end_x = if i == end_line {
+                (r.end - buffer.line_to_char(end_line)) as f64 * state.font_width
+            } else {
+                da_width as f64
+            };
+            // if buffer.char_to_line(r.start) != i {
+            //     continue;
+            // }
+            // let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
+            // let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
+            cr.rectangle(
+                start_x - hadj.get_value(),
+                (((state.font_height) as usize) * i) as f64 - vadj.get_value(),
+                end_x - start_x,
+                state.font_height,
+            );
+            cr.fill();
+        }
+    }
     cr.fill();
 
     const CURSOR_WIDTH: f64 = 2.0;
     let mut max_width = 0;
     for i in visible_lines {
         // Keep track of the starting x position
-        if i < rope.len_lines() {
-            let line = rope.line(i);
+        if i < buffer.len_lines() {
+            // let line = buffer.line(i);
+            let (line, attrs) = buffer.get_line_with_attributes(i, &text_theme);
 
             cr.move_to(
                 -hadj.get_value(),
@@ -824,8 +824,15 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
             //     .get_pango_context()
             //     .expect("failed to get pango ctx");
 
-            set_source_color(cr, theme.foreground);
-            let layout = create_layout_for_line(state, &pango_ctx, &line);
+            // set_source_color(cr, theme.foreground);
+            cr.set_source_rgba(
+                text_theme.fg.r_f64(),
+                text_theme.fg.g_f64(),
+                text_theme.fg.b_f64(),
+                1.0,
+            );
+
+            let layout = create_layout_for_line(state, &pango_ctx, &line, &attrs);
             max_width = max(max_width, layout.get_extents().1.width);
             // debug!("width={}", layout.get_extents().1.width);
             update_layout(cr, &layout);
@@ -837,13 +844,20 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
             }
             let layout_line = layout_line.unwrap();
 
-            // Draw the cursor
-            set_source_color(cr, theme.caret);
-            for sel in &view.selections {
-                if rope.char_to_line(sel.cursor()) != i {
+            // Draw the cursors
+            // set_source_color(cr, theme.caret);
+            cr.set_source_rgba(
+                text_theme.cursor.r_f64(),
+                text_theme.cursor.g_f64(),
+                text_theme.cursor.b_f64(),
+                1.0,
+            );
+
+            for sel in buffer.selections(view_id) {
+                if buffer.char_to_line(sel.cursor()) != i {
                     continue;
                 }
-                let line_byte = rope.char_to_byte(sel.cursor()) - rope.line_to_byte(i);
+                let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
                 let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
                 cr.rectangle(
                     (x as f64) - hadj.get_value(),
@@ -872,6 +886,9 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
         hadj.value_changed();
     }
 
+    let draw_end = Instant::now();
+    debug!("drawing took {}ms", (draw_end - draw_start).as_millis());
+
     Inhibit(false)
 }
 
@@ -880,6 +897,7 @@ fn create_layout_for_line(
     state: &State,
     pango_ctx: &pango::Context,
     line: &RopeSlice,
+    attr_spans: &[AttrSpan],
 ) -> pango::Layout {
     // let line_view = if line.text().ends_with('\n') {
     //     &line.text()[0..line.text().len() - 1]
@@ -892,8 +910,24 @@ fn create_layout_for_line(
     // TODO Is this how I should do this?
     layout.set_text(&format!("{}", line));
 
-    let mut ix = 0;
     let attr_list = pango::AttrList::new();
+    for aspan in attr_spans {
+        let mut pattr = match aspan.attr {
+            Attr::ForegroundColor(color) => {
+                Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
+            }
+            Attr::BackgroundColor(color) => {
+                Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
+            }
+        };
+        if let Some(ref mut pattr) = pattr {
+            pattr.set_start_index(aspan.start_idx as u32);
+            pattr.set_end_index(aspan.end_idx as u32);
+        }
+        if let Some(pattr) = pattr {
+            attr_list.insert(pattr);
+        }
+    }
 
     layout.set_attributes(Some(&attr_list));
     layout

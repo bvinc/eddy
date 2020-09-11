@@ -1,11 +1,11 @@
 mod buffer;
+mod language;
 mod range;
 mod selection;
-// mod view;
-// mod workspace;
+pub mod style;
+mod workspace;
 
 pub use buffer::*;
 pub use range::*;
 pub use selection::*;
-// pub use view::*;
-// pub use workspace::*;
+pub use workspace::*;

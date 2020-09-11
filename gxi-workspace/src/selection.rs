@@ -1,7 +1,7 @@
 use crate::Range;
 use std::cmp::{max, min};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Selection {
     // start of a selection region, in character indexes
     pub start: usize,

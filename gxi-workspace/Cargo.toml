@@ -10,3 +10,7 @@ license = "MIT"
 log = "0.4"
 ropey = "1.2"
 unicode-segmentation = "1.3"
+eddy-ts = {path = "../eddy-ts"}
+eddy-highlight = {path = "../eddy-highlight"}
+serde = "1.0"
+toml = "0.5"

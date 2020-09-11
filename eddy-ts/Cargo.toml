@@ -1,0 +1,13 @@
+[package]
+name = "eddy-ts"
+version = "0.1.0"
+edition = "2018"
+authors = ["Brian Vincent <brainn@gmail.com>"]
+homepage = "https://github.com/bvinc/gxi"
+license = "MIT"
+
+[build-dependencies]
+cc="*"
+
+[dependencies]
+tree-sitter = "0.16.1"
