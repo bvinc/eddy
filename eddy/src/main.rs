@@ -8,6 +8,7 @@
 // mod main_win;
 mod linecache;
 mod scrollable_drawing_area;
+mod scrollable_drawing_area_orig;
 mod theme;
 mod widget;
 
@@ -15,6 +16,7 @@ mod widget;
 use crate::widget::dir_bar::DirBar;
 use crate::widget::editview::{self, EditView};
 use crate::widget::tab::{self, Tab};
+use eddy_workspace::Workspace;
 use gio::prelude::*;
 use gio::ApplicationExt;
 use gio::{ActionMapExt, ApplicationFlags, SimpleAction};
@@ -24,7 +26,6 @@ use gtk::{
     self, Application, ApplicationWindow, FileChooserAction, FileChooserDialog, Notebook, Paned,
     ResponseType,
 };
-use gxi_workspace::Workspace;
 use log::*;
 use relm::{connect, Channel, Relm, Update, Widget};
 use relm_derive::Msg;
@@ -68,7 +69,7 @@ pub enum Msg {
 pub struct Model {
     relm: Relm<Win>,
     workspace: Rc<RefCell<Workspace>>,
-    // model: gxi_model::Model,
+    // model: eddy_model::Model,
     application: Application,
 }
 
@@ -154,7 +155,7 @@ impl Widget for Win {
         connect!(relm, application, connect_open(_, _, _), Msg::Open);
         connect!(relm, application, connect_shutdown(_), Msg::Shutdown);
 
-        let glade_src = include_str!("ui/gxi.glade");
+        let glade_src = include_str!("ui/eddy.glade");
         let builder = gtk::Builder::from_string(glade_src);
 
         let app_win: ApplicationWindow = builder.get_object("appwindow").unwrap();
@@ -172,6 +173,7 @@ impl Widget for Win {
 
         // let dir_bar_id = DirBar::new(None, controller.clone());
 
+        trace!("view1.3");
         sidebar_paned.set_position(200);
         sidebar_paned.set_child_resize(&sidebar_box, false);
         sidebar_paned.set_child_resize(&notebook, true);
@@ -180,7 +182,9 @@ impl Widget for Win {
         app_win.set_application(Some(&model.application.clone()));
 
         // Open dialog
+        trace!("creating open dialog");
         let open_dialog = FileChooserDialog::new(None, Some(&app_win), FileChooserAction::Open);
+        trace!("finished creating open dialog");
         open_dialog.set_transient_for(Some(&app_win));
         open_dialog.add_button("Open", ResponseType::Ok);
         open_dialog.set_default_response(ResponseType::Ok);
@@ -227,6 +231,7 @@ impl Widget for Win {
         //     return (Some(Msg::Quit), Inhibit(false))
         // );
 
+        trace!("view2");
         {
             let open_action = SimpleAction::new("open", None);
             connect!(relm, open_action, connect_activate(_, _), Msg::Open);
@@ -272,6 +277,7 @@ impl Widget for Win {
             );
             app_win.add_action(&close_all_action);
         }
+        trace!("view3");
         {
             let quit_action = SimpleAction::new("quit", None);
             connect!(relm, quit_action, connect_activate(_, _), Msg::Quit);
@@ -301,6 +307,7 @@ impl Widget for Win {
             app_win.add_action(&auto_indent_action);
         }
 
+        trace!("view4");
         connect!(
             relm,
             app_win,
@@ -308,8 +315,11 @@ impl Widget for Win {
             return (Some(Msg::Quit), Inhibit(false))
         );
 
+        trace!("view5");
+
         app_win.show_all();
 
+        trace!("view-last");
         Win {
             model,
             app_win,
@@ -500,7 +510,7 @@ fn main() {
     env_logger::init();
     gtk::init().expect("gtk init");
 
-    // let model = gxi_model::Model::new();
+    // let model = eddy_model::Model::new();
     // model.init();
     // let shared_queue = model.shared_queue();
     // let reader_raw_fd = {
@@ -511,14 +521,16 @@ fn main() {
 
     // CONTROLLER.set(Controller::new(model.clone()));
     // let cont = Rc::new(RefCell::new(Controller::new(model.clone())));
-    let application =
-        Application::new(Some("com.github.bvinc.gxi"), ApplicationFlags::HANDLES_OPEN)
-            .expect("failed to create gtk application");
+    let application = Application::new(
+        Some("com.github.bvinc.eddy"),
+        ApplicationFlags::HANDLES_OPEN,
+    )
+    .expect("failed to create gtk application");
 
     let win = Rc::new(RefCell::new(None));
 
     application.connect_startup(move |application| {
-        // let model = gxi_model::Model::new();
+        // let model = eddy_model::Model::new();
         // model.init();
         // let shared_queue = model.shared_queue();
         // let reader_raw_fd = {

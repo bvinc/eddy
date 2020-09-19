@@ -1,9 +1,9 @@
 [package]
-name = "gxi-workspace"
+name = "eddy-workspace"
 version = "0.1.0"
 edition = "2018"
 authors = ["Brian Vincent <brainn@gmail.com>"]
-homepage = "https://github.com/bvinc/gxi"
+homepage = "https://github.com/bvinc/eddy"
 license = "MIT"
 
 [dependencies]

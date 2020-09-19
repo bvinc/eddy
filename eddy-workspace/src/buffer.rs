@@ -1,10 +1,12 @@
-use crate::language::rust::RustLayer;
+use crate::language::go::GoLayer;
+use crate::language::{self, Layer, NilLayer};
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::Range;
 use crate::Selection;
 use crate::ViewId;
-use eddy_ts::{language, Parser, Tree};
+use eddy_ts::{Parser, Tree};
 use ropey::{str_utils::byte_to_char_idx, Rope, RopeSlice};
+use std::borrow::Cow;
 use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::fs::File;
@@ -19,28 +21,7 @@ pub struct Buffer {
     history_ix: usize,
     history: Vec<Rope>,
     selections: HashMap<ViewId, Vec<Selection>>,
-    parser: eddy_ts::Parser,
-    tree: Option<Tree>,
-    layer: RustLayer,
-}
-
-fn print_tree(node: eddy_ts::Node, level: u32) {
-    let mut cur = node.walk();
-    println!(
-        "{}{} {} {}-{}",
-        // indent 4 spaces for each level
-        (0..level * 4).map(|_| " ").collect::<String>(),
-        cur.node().kind(),
-        cur.node().kind_id(),
-        cur.node().start_position(),
-        cur.node().end_position()
-    );
-    if cur.goto_first_child() {
-        print_tree(cur.node(), level + 1);
-    }
-    while cur.goto_next_sibling() {
-        print_tree(cur.node(), level + 1);
-    }
+    layer: Box<dyn Layer>,
 }
 
 impl Buffer {
@@ -50,9 +31,7 @@ impl Buffer {
             history_ix: 0,
             history: vec![Rope::new()],
             selections: HashMap::new(),
-            parser: Parser::new(),
-            tree: None,
-            layer: RustLayer::new(),
+            layer: Box::new(NilLayer::new()),
         }
     }
     pub fn from_file(path: &Path) -> Result<Self, io::Error> {
@@ -63,9 +42,7 @@ impl Buffer {
             history_ix: 0,
             history: vec![rope],
             selections: HashMap::new(),
-            parser: Parser::new(),
-            tree: None,
-            layer: RustLayer::new(),
+            layer: language::layer_from_path(path),
         })
     }
 
@@ -96,6 +73,8 @@ impl Buffer {
     }
 
     /// Removes a range of text from the buffer
+    /// `remove` and `insert_at` are the two base methods that all edits
+    /// eventually call.
     pub fn remove(&mut self, char_range: Range) {
         debug_assert!(char_range.start <= char_range.end);
 
@@ -127,6 +106,27 @@ impl Buffer {
                 }
             }
         }
+
+        self.layer.update_highlights(rope);
+    }
+
+    /// Insert text into the buffer at a character index
+    /// `remove` and `insert_at` are the two base methods that all edits
+    /// eventually call.
+    pub fn insert_at(&mut self, char_idx: usize, text: &str) {
+        let rope = &mut self.history[self.history_ix];
+        rope.insert(char_idx, text);
+        let size = text.chars().count();
+        for sels in &mut self.selections.values_mut() {
+            for sel in sels {
+                if sel.start >= char_idx {
+                    sel.start += size;
+                }
+                if sel.end >= char_idx {
+                    sel.end += size;
+                }
+            }
+        }
     }
 
     /// Insert text at every selection location in a view
@@ -142,41 +142,8 @@ impl Buffer {
             self.insert_at(sel.cursor(), text);
         }
 
-        self.parser.set_language(language::rust());
         let rope = &self.history[self.history_ix].clone();
-        self.tree = self.parser.parse_with(
-            &mut |byte_idx, pos| {
-                if byte_idx > rope.len_bytes() {
-                    return [].as_ref();
-                }
-                let (s, chunk_byte_idx, _, _) = rope.chunk_at_byte(byte_idx);
-                let ret = &s.as_bytes()[byte_idx - chunk_byte_idx..];
-                // println!("asked for {} {}, returned {:?}", byte_idx, pos, ret);
-                ret
-            },
-            None, //self.tree.as_ref(),
-        );
-        if let Some(tree) = &self.tree {
-            print_tree(tree.root_node(), 0);
-            self.layer.update_highlights(rope, tree.root_node());
-        }
-    }
-
-    /// Insert text into the buffer at a character index
-    pub fn insert_at(&mut self, char_idx: usize, text: &str) {
-        let rope = &mut self.history[self.history_ix];
-        rope.insert(char_idx, text);
-        let size = text.chars().count();
-        for sels in &mut self.selections.values_mut() {
-            for sel in sels {
-                if sel.start >= char_idx {
-                    sel.start += size;
-                }
-                if sel.end >= char_idx {
-                    sel.end += size;
-                }
-            }
-        }
+        self.layer.update_highlights(rope);
     }
 
     /// Insert a newline at every selection point of a view
@@ -200,7 +167,7 @@ impl Buffer {
                     // Remove the character in front of the cursor
                     self.remove(Range {
                         start: sel.cursor(),
-                        end: sel.cursor() + 1,
+                        end: next_grapheme_boundary(&self.history[self.history_ix], sel.start),
                     });
                 }
             } else {
@@ -220,7 +187,7 @@ impl Buffer {
                 if sel.cursor() != 0 {
                     // Remove the character before the cursor
                     self.remove(Range {
-                        start: sel.cursor() - 1,
+                        start: prev_grapheme_boundary(&self.history[self.history_ix], sel.start),
                         end: sel.cursor(),
                     });
                 }
@@ -232,12 +199,15 @@ impl Buffer {
 
     /// Move the cursor to the left, or collapse selection region to the left
     pub fn move_left(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
         for sel in self.selections.entry(view_id).or_default() {
             if sel.is_caret() {
                 // move cursor to the left
                 if sel.start > 0 {
-                    sel.start -= 1;
-                    sel.end -= 1;
+                    let left = prev_grapheme_boundary(rope, sel.start);
+                    sel.start = left;
+                    sel.end = left;
                 }
             } else {
                 // collapse selection to the left
@@ -251,21 +221,21 @@ impl Buffer {
     /// Move the cursor to the right, or collapse selection region to the right
     pub fn move_right(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
+
         let len_chars = rope.len_chars();
         for sel in self.selections.entry(view_id).or_default() {
-            if sel.start != sel.end {
-                // collapse selection to the right
-                let right = max(sel.start, sel.end);
-                sel.start = right;
-                sel.end = right;
-            } else {
+            if sel.is_caret() {
                 // move cursor to the right
                 if sel.start < len_chars {
-                    sel.start += 1;
+                    let right = next_grapheme_boundary(rope, sel.start);
+                    sel.start = right;
+                    sel.end = right;
                 }
-                if sel.end < len_chars {
-                    sel.end += 1;
-                }
+            } else {
+                // collapse selection to the right
+                let right = sel.right();
+                sel.start = right;
+                sel.end = right;
             }
         }
     }
@@ -389,9 +359,12 @@ impl Buffer {
 
     /// Move the cursor left while modifying the selection region
     pub fn move_left_and_modify_selection(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
         for sel in self.selections.entry(view_id).or_default() {
             if sel.end > 0 {
-                sel.end -= 1;
+                let left = prev_grapheme_boundary(rope, sel.end);
+                sel.end = left;
             }
         }
     }
@@ -403,7 +376,8 @@ impl Buffer {
 
         for sel in self.selections.entry(view_id).or_default() {
             if sel.end < len_chars {
-                sel.end += 1;
+                let right = next_grapheme_boundary(rope, sel.end);
+                sel.end = right;
             }
         }
     }
@@ -531,6 +505,135 @@ impl Buffer {
             self.move_down_and_modify_selection(view_id);
         }
     }
+
+    /// Executed when a user clicks
+    pub fn gesture_point_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
+        let rope = &self.history[self.history_ix];
+        let line = min(line, rope.len_lines());
+        let total_byte_idx = rope.line_to_byte(line) + byte_idx;
+        let total_char_idx = rope.byte_to_char(total_byte_idx);
+        let total_char_idx = min(total_char_idx, rope.len_chars());
+
+        let mut sel = Selection::new();
+        sel.start = total_char_idx;
+        sel.end = total_char_idx;
+
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Occupied(ref mut e) => {
+                e.get_mut().clear();
+                e.get_mut().push(sel);
+            }
+            Entry::Vacant(e) => {
+                e.insert(vec![sel]);
+            }
+        }
+    }
+
+    /// Executed when a user shift-clicks
+    pub fn gesture_range_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
+        let rope = &self.history[self.history_ix];
+        let line = min(line, rope.len_lines());
+        let total_byte_idx = rope.line_to_byte(line) + byte_idx;
+        let total_char_idx = rope.byte_to_char(total_byte_idx);
+        let total_char_idx = min(total_char_idx, rope.len_chars());
+
+        let mut sel = Selection::new();
+        sel.start = self
+            .selections
+            .entry(view_id)
+            .or_default()
+            .iter()
+            .map(|&s| s.start)
+            .min()
+            .unwrap_or_default();
+        sel.end = total_char_idx;
+
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Occupied(ref mut e) => {
+                e.get_mut().clear();
+                e.get_mut().push(sel);
+            }
+            Entry::Vacant(e) => {
+                e.insert(vec![sel]);
+            }
+        }
+    }
+
+    /// Executed when a user ctrl-clicks.  If a selection exists on that point,
+    /// remove it.  Otherwise, add a new selection at that point.
+    pub fn gesture_toggle_sel(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
+        let rope = &self.history[self.history_ix];
+        let line = min(line, rope.len_lines());
+        let total_byte_idx = rope.line_to_byte(line) + byte_idx;
+        let total_char_idx = rope.byte_to_char(total_byte_idx);
+        let total_char_idx = min(total_char_idx, rope.len_chars());
+
+        let new_sel = Selection {
+            start: total_char_idx,
+            end: total_char_idx,
+            horiz: None,
+        };
+
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Vacant(e) => {
+                // This shouldn't happen, but if it does, add a cursor
+                e.insert(vec![new_sel]);
+            }
+            Entry::Occupied(ref mut e) => {
+                // Search for a selection where the user clicked
+                match e.get().binary_search_by_key(&total_char_idx, |s| s.start) {
+                    Ok(ix) => {
+                        // We found one, remove it
+                        e.get_mut().remove(ix);
+                    }
+                    Err(ix) => {
+                        if ix > 0 && e.get()[ix - 1].end >= total_char_idx {
+                            // The one before it overlaps where the user clicked
+                            e.get_mut().remove(ix - 1);
+                        } else {
+                            e.get_mut().insert(ix, new_sel);
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    /// Executed when a user double-clicks
+    pub fn gesture_word_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {}
+
+    /// Executed when a user triple-clicks
+    pub fn gesture_line_select(&mut self, view_id: ViewId, line: usize) {
+        let rope = &self.history[self.history_ix];
+        let line = min(line, rope.len_lines());
+        let line_char_idx = rope.line_to_char(line);
+        let line_end_char_idx = {
+            if line >= rope.len_lines() - 1 {
+                rope.len_chars()
+            } else {
+                rope.line_to_char(line + 1)
+            }
+        };
+
+        let mut sel = Selection::new();
+        sel.start = line_char_idx;
+        sel.end = line_end_char_idx;
+
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Occupied(ref mut e) => {
+                e.get_mut().clear();
+                e.get_mut().push(sel);
+            }
+            Entry::Vacant(e) => {
+                e.insert(vec![sel]);
+            }
+        }
+    }
+
     pub fn select_all(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
         let len_chars = rope.len_chars();
@@ -551,6 +654,38 @@ impl Buffer {
             self.history_ix += 1;
         }
     }
+    pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
+        let ret = self.copy(view_id);
+        for i in 0..self.selections.entry(view_id).or_default().len() {
+            let sel = self.selections.get(&view_id).unwrap()[i];
+            if !sel.is_caret() {
+                // Just remove the selection
+                self.remove(sel.range());
+            }
+        }
+        ret
+    }
+    pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
+        let mut ret = String::new();
+        for i in 0..self.selections.entry(view_id).or_default().len() {
+            let sel = self.selections.get(&view_id).unwrap()[i];
+            if !sel.is_caret() {
+                // Just remove the selection
+                let rope = &self.history[self.history_ix];
+                let text: Cow<str> = rope.slice(sel.range()).into();
+                if !ret.is_empty() {
+                    ret.push('\n');
+                }
+                ret.push_str(&text);
+            }
+        }
+        if ret.is_empty() {
+            None
+        } else {
+            Some(ret)
+        }
+    }
+    pub fn paste(&mut self, view_id: ViewId) {}
 
     // currently the only thing this does is ensure that all selections are not
     // out of bounds
@@ -612,8 +747,11 @@ impl Buffer {
         &self,
         line_idx: usize,
         theme: &Theme,
-    ) -> (RopeSlice, Vec<AttrSpan>) {
+    ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
         let rope = &self.history[self.history_ix];
+        if line_idx >= rope.len_lines() {
+            return None;
+        }
         let line = rope.line(line_idx);
         let len_lines = rope.len_lines();
         let line_start = rope.line_to_byte(line_idx);
@@ -625,7 +763,7 @@ impl Buffer {
         };
 
         let mut spans = Vec::new();
-        if let Some(tree) = &self.tree {
+        if let Some(tree) = self.layer.tree() {
             let mut cur = tree.walk();
             loop {
                 let mut relevant = false;
@@ -668,84 +806,80 @@ impl Buffer {
                 }
             }
         }
-        (line, spans)
+        Some((line, spans))
     }
+}
 
-    /// Finds the previous grapheme boundary before the given char position.
-    fn prev_grapheme_boundary(&self, char_idx: usize) -> usize {
-        let slice = &self.history[self.history_ix];
+/// Finds the previous grapheme boundary before the given char position.
+fn prev_grapheme_boundary(slice: &Rope, char_idx: usize) -> usize {
+    // Bounds check
+    debug_assert!(char_idx <= slice.len_chars());
 
-        // Bounds check
-        debug_assert!(char_idx <= slice.len_chars());
+    // We work with bytes for this, so convert.
+    let byte_idx = slice.char_to_byte(char_idx);
 
-        // We work with bytes for this, so convert.
-        let byte_idx = slice.char_to_byte(char_idx);
+    // Get the chunk with our byte index in it.
+    let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
 
-        // Get the chunk with our byte index in it.
-        let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
+    // Set up the grapheme cursor.
+    let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
 
-        // Set up the grapheme cursor.
-        let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
-
-        // Find the previous grapheme cluster boundary.
-        loop {
-            match gc.prev_boundary(chunk, chunk_byte_idx) {
-                Ok(None) => return 0,
-                Ok(Some(n)) => {
-                    let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
-                    return chunk_char_idx + tmp;
-                }
-                Err(GraphemeIncomplete::PrevChunk) => {
-                    let (a, b, c, _) = slice.chunk_at_byte(chunk_byte_idx - 1);
-                    chunk = a;
-                    chunk_byte_idx = b;
-                    chunk_char_idx = c;
-                }
-                Err(GraphemeIncomplete::PreContext(n)) => {
-                    let ctx_chunk = slice.chunk_at_byte(n - 1).0;
-                    gc.provide_context(ctx_chunk, n - ctx_chunk.len());
-                }
-                _ => unreachable!(),
+    // Find the previous grapheme cluster boundary.
+    loop {
+        match gc.prev_boundary(chunk, chunk_byte_idx) {
+            Ok(None) => return 0,
+            Ok(Some(n)) => {
+                let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
+                return chunk_char_idx + tmp;
             }
+            Err(GraphemeIncomplete::PrevChunk) => {
+                let (a, b, c, _) = slice.chunk_at_byte(chunk_byte_idx - 1);
+                chunk = a;
+                chunk_byte_idx = b;
+                chunk_char_idx = c;
+            }
+            Err(GraphemeIncomplete::PreContext(n)) => {
+                let ctx_chunk = slice.chunk_at_byte(n - 1).0;
+                gc.provide_context(ctx_chunk, n - ctx_chunk.len());
+            }
+            _ => unreachable!(),
         }
     }
+}
 
-    /// Finds the next grapheme boundary after the given char position.
-    fn next_grapheme_boundary(&self, char_idx: usize) -> usize {
-        let slice = &self.history[self.history_ix];
+/// Finds the next grapheme boundary after the given char position.
+fn next_grapheme_boundary(slice: &Rope, char_idx: usize) -> usize {
+    // Bounds check
+    debug_assert!(char_idx <= slice.len_chars());
 
-        // Bounds check
-        debug_assert!(char_idx <= slice.len_chars());
+    // We work with bytes for this, so convert.
+    let byte_idx = slice.char_to_byte(char_idx);
 
-        // We work with bytes for this, so convert.
-        let byte_idx = slice.char_to_byte(char_idx);
+    // Get the chunk with our byte index in it.
+    let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
 
-        // Get the chunk with our byte index in it.
-        let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
+    // Set up the grapheme cursor.
+    let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
 
-        // Set up the grapheme cursor.
-        let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
-
-        // Find the next grapheme cluster boundary.
-        loop {
-            match gc.next_boundary(chunk, chunk_byte_idx) {
-                Ok(None) => return slice.len_chars(),
-                Ok(Some(n)) => {
-                    let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
-                    return chunk_char_idx + tmp;
-                }
-                Err(GraphemeIncomplete::NextChunk) => {
-                    chunk_byte_idx += chunk.len();
-                    let (a, _, c, _) = slice.chunk_at_byte(chunk_byte_idx);
-                    chunk = a;
-                    chunk_char_idx = c;
-                }
-                Err(GraphemeIncomplete::PreContext(n)) => {
-                    let ctx_chunk = slice.chunk_at_byte(n - 1).0;
-                    gc.provide_context(ctx_chunk, n - ctx_chunk.len());
-                }
-                _ => unreachable!(),
+    // Find the next grapheme cluster boundary.
+    loop {
+        match gc.next_boundary(chunk, chunk_byte_idx) {
+            Ok(None) => return slice.len_chars(),
+            Ok(Some(n)) => {
+                let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
+                return chunk_char_idx + tmp;
             }
+            Err(GraphemeIncomplete::NextChunk) => {
+                chunk_byte_idx += chunk.len();
+                let (a, _, c, _) = slice.chunk_at_byte(chunk_byte_idx);
+                chunk = a;
+                chunk_char_idx = c;
+            }
+            Err(GraphemeIncomplete::PreContext(n)) => {
+                let ctx_chunk = slice.chunk_at_byte(n - 1).0;
+                gc.provide_context(ctx_chunk, n - ctx_chunk.len());
+            }
+            _ => unreachable!(),
         }
     }
 }

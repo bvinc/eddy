@@ -678,7 +678,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gxi"
+name = "eddy"
 version = "0.2.0"
 dependencies = [
  "cairo-rs 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",

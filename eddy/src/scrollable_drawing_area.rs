@@ -13,6 +13,7 @@ use glib::{
 };
 use gtk::subclass::prelude::*;
 use gtk::{Adjustment, ScrollablePolicy};
+use log::*;
 use once_cell::unsync::OnceCell;
 use std::cell::{Cell, RefCell};
 use std::ptr;
@@ -123,6 +124,7 @@ impl ObjectImpl for ScrollableDrawingAreaPrivate {
     // method. Its what gets called when we create our Object
     // and where we can initialize things.
     fn constructed(&self, obj: &glib::Object) {
+        trace!("ScrollableDrawingAreaPrivate::constructed");
         self.parent_constructed(obj);
 
         let hadjustment = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
@@ -141,6 +143,7 @@ impl ObjectImpl for ScrollableDrawingAreaPrivate {
     }
 
     fn set_property(&self, _obj: &Object, id: usize, value: &Value) {
+        trace!("ScrollableDrawingAreaPrivate::set_property");
         let prop = &PROPERTIES[id];
         match *prop {
             Property("hadjustment", ..) => {
@@ -168,6 +171,12 @@ impl ObjectImpl for ScrollableDrawingAreaPrivate {
     }
 
     fn get_property(&self, _obj: &Object, id: usize) -> Result<Value, ()> {
+        trace!("ScrollableDrawingAreaPrivate::get_property(id={})", id);
+        trace!(
+            "ScrollableDrawingAreaPrivate::get_property hadj={:?}, vadj={:?}",
+            self.widgets.get().unwrap().hadjustment.borrow().to_value(),
+            self.widgets.get().unwrap().vadjustment.borrow().to_value()
+        );
         let prop = &PROPERTIES[id];
         match *prop {
             Property("hadjustment", ..) => {
@@ -207,6 +216,7 @@ glib_wrapper! {
 
 impl ScrollableDrawingArea {
     pub fn new() -> Self {
+        trace!("ScrollableDrawingArea::new");
         glib::Object::new(Self::static_type(), &[])
             .expect("failed to create ScrollableDrawingArea")
             .downcast::<ScrollableDrawingArea>()

@@ -173,11 +173,21 @@ impl Workspace {
         self.buffer(view_id).redo();
     }
 
+    pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
+        self.buffer(view_id).cut(view_id)
+    }
+    pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
+        self.buffer(view_id).copy(view_id)
+    }
+    pub fn paste(&mut self, view_id: ViewId) {
+        self.buffer(view_id).paste(view_id);
+    }
+
     pub fn get_line_with_attributes(
         &mut self,
         view_id: ViewId,
         line_idx: usize,
-    ) -> (RopeSlice, Vec<AttrSpan>) {
+    ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
         let (buffer, theme) = self.buffer_and_theme(view_id);
         buffer.get_line_with_attributes(line_idx, &theme)
     }

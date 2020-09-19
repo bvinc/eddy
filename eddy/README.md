@@ -1,9 +1,9 @@
-# gxi
+# eddy
 GTK frontend, written in Rust for the [xi editor](https://github.com/google/xi-editor).
 
-gxi is a work in progress!
+eddy is a work in progress!
 
-![screenshot](https://raw.githubusercontent.com/bvinc/gxi/master/screenshot.png)
+![screenshot](https://raw.githubusercontent.com/bvinc/eddy/master/screenshot.png)
 
 ## Instructions
 
@@ -31,10 +31,10 @@ cd xi-editor/rust/syntect-plugin/
 make install
 ```
 
-### Running gxi
+### Running eddy
 
 ```sh
-git clone https://github.com/bvinc/gxi.git
-cd gxi
+git clone https://github.com/bvinc/eddy.git
+cd eddy
 cargo run
 ```

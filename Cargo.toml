@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "gxi",
-    "gxi-workspace",
+    "eddy",
+    "eddy-workspace",
     "eddy-ts",
     "eddy-highlight"
 ]

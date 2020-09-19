@@ -1,8 +1,11 @@
 use crate::linecache::{Line, LineCache};
 use crate::scrollable_drawing_area::ScrollableDrawingArea;
+// use crate::scrollable_drawing_area_orig::ScrollableDrawingArea;
 use crate::theme::{set_source_color, Theme};
 use crate::MainState;
 use cairo::Context;
+use eddy_workspace::style::{Attr, AttrSpan, Color};
+use eddy_workspace::{Buffer, Workspace};
 use gdk::keys::constants as key;
 use gdk::EventMask;
 use gdk::*;
@@ -10,8 +13,6 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{self, *};
 use gtk::{prelude::WidgetExtManual, BoxExt, Inhibit, WidgetExt};
-use gxi_workspace::style::{Attr, AttrSpan, Color};
-use gxi_workspace::Workspace;
 use log::debug;
 use log::*;
 use pango::{self, *};
@@ -20,6 +21,7 @@ use relm::{connect, EventStream, Relm, Update, Widget};
 use relm_derive::Msg;
 use ropey::RopeSlice;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::{max, min};
 use std::ops::Range;
@@ -119,16 +121,16 @@ impl Update for EditView {
     fn update(&mut self, event: Msg) {
         let mut state = self.state.borrow_mut();
         match event {
-            // Msg::ButtonPress(eb) => self.handle_button_press(&mut state, &eb),
+            Msg::ButtonPress(eb) => self.handle_button_press(&mut state, &eb),
             // Msg::FindNext => self.find_next(&mut state),
             // Msg::FindPrev => self.find_prev(&mut state),
             // Msg::FindStatus(queries) => self.find_status(&mut state, &queries),
             Msg::KeyPress(ek) => self.handle_key_press_event(&mut state, &ek),
             // Msg::ConfigChanged(changes) => self.config_changed(&mut state, &changes),
             // Msg::MotionNotify(em) => self.handle_drag(&mut state, &em),
-            // Msg::ScrollEvent(es) => self.handle_scroll(&mut state, &es),
-            // Msg::ScrollTo(line, col) => self.scroll_to(&mut state, line, col),
-            // Msg::SizeAllocate(w, h) => self.da_size_allocate(&mut state, w, h),
+            Msg::ScrollEvent(es) => self.handle_scroll(&mut state, &es),
+            Msg::ScrollTo(line, col) => self.scroll_to(&mut state, line, col),
+            Msg::SizeAllocate(w, h) => self.da_size_allocate(&mut state, w, h),
             // Msg::SearchChanged(s) => self.search_changed(&mut state, s),
             // Msg::StopSearch => self.stop_search(&mut state),
             // Msg::Replace => self.replace(&mut state),
@@ -407,9 +409,6 @@ impl Widget for EditView {
 
 impl EditView {
     fn handle_key_press_event(&self, state: &mut State, ek: &EventKey) {
-        state.line_da.queue_draw();
-        state.da.queue_draw();
-
         debug!(
             "key press keyval={:?}, state={:?}, length={:?} group={:?} uc={:?}",
             ek.get_keyval(),
@@ -569,19 +568,19 @@ impl EditView {
                             state.model.workspace.borrow_mut().select_all(view_id);
                         }
                         'c' if ctrl => {
-                            // self.do_copy(view_id);
+                            self.do_copy(state);
                         }
                         'f' if ctrl => {
                             // self.start_search(state);
                         }
                         'v' if ctrl => {
-                            self.do_paste(state, view_id);
+                            self.do_paste(state);
                         }
                         't' if ctrl => {
                             // TODO new tab
                         }
                         'x' if ctrl => {
-                            // self.do_cut(view_id);
+                            self.do_cut(state);
                         }
                         'z' if ctrl => {
                             state.model.workspace.borrow_mut().undo(view_id);
@@ -604,9 +603,93 @@ impl EditView {
                 }
             }
         };
+
+        self.on_text_change(state);
     }
 
-    fn do_paste(&self, state: &State, view_id: usize) {
+    fn da_size_allocate(&self, state: &mut State, da_width: i32, da_height: i32) {
+        // debug!("DA SIZE ALLOCATE");
+        let vadj = state.vadj.clone();
+        vadj.set_page_size(f64::from(da_height));
+        let hadj = state.hadj.clone();
+        hadj.set_page_size(f64::from(da_width));
+
+        // self.update_visible_scroll_region(state);
+    }
+
+    fn handle_scroll(&self, state: &mut State, _es: &EventScroll) {
+        // // self.da.grab_focus();
+        // // // let amt = self.font_height * 3.0;
+
+        // // if let ScrollDirection::Smooth = es.get_direction() {
+        // //     error!("Smooth scroll!");
+        // // }
+
+        // // debug!("handle scroll {:?}", es);
+        // // let vadj = self.vadj.clone();
+        // // let hadj = self.hadj.clone();
+        // // match es.get_direction() {
+        // //     ScrollDirection::Up => vadj.set_value(vadj.get_value() - amt),
+        // //     ScrollDirection::Down => vadj.set_value(vadj.get_value() + amt),
+        // //     ScrollDirection::Left => hadj.set_value(hadj.get_value() - amt),
+        // //     ScrollDirection::Right => hadj.set_value(hadj.get_value() + amt),
+        // //     ScrollDirection::Smooth => debug!("scroll Smooth"),
+        // //     _ => {},
+        // // }
+
+        // self.update_visible_scroll_region(state);
+    }
+
+    fn scroll_to(&self, state: &mut State, line: u64, col: u64) {
+        let cur_top = state.font_height * ((line + 1) as f64) - state.font_ascent;
+        let cur_bottom = cur_top + state.font_ascent + state.font_descent;
+        let vadj = state.vadj.clone();
+
+        let cur_left = state.font_width * (col as f64) - state.font_ascent;
+        let cur_right = cur_left + state.font_width * 2.0;
+        let hadj = state.hadj.clone();
+
+        if cur_top < vadj.get_value() {
+            vadj.set_value(cur_top);
+        } else if cur_bottom > vadj.get_value() + vadj.get_page_size()
+            && vadj.get_page_size() != 0.0
+        {
+            vadj.set_value(cur_bottom - vadj.get_page_size());
+        }
+
+        if cur_left < hadj.get_value() {
+            hadj.set_value(cur_left);
+        } else if cur_right > hadj.get_value() + hadj.get_page_size() && hadj.get_page_size() != 0.0
+        {
+            let new_value = cur_right - hadj.get_page_size();
+            if new_value + hadj.get_page_size() > hadj.get_upper() {
+                hadj.set_upper(new_value + hadj.get_page_size());
+            }
+            hadj.set_value(new_value);
+        }
+
+        // self.update_visible_scroll_region(state);
+    }
+
+    fn do_cut(&self, state: &State) {
+        let view_id = state.model.view_id;
+        let mut workspace = state.model.workspace.borrow_mut();
+
+        if let Some(text) = workspace.cut(view_id) {
+            Clipboard::get(&SELECTION_CLIPBOARD).set_text(&text);
+        }
+    }
+
+    fn do_copy(&self, state: &State) {
+        let view_id = state.model.view_id;
+        let mut workspace = state.model.workspace.borrow_mut();
+        if let Some(text) = workspace.copy(view_id) {
+            Clipboard::get(&SELECTION_CLIPBOARD).set_text(&text);
+        }
+    }
+
+    fn do_paste(&self, state: &State) {
+        let view_id = state.model.view_id;
         let workspace = state.model.workspace.clone();
         Clipboard::get(&SELECTION_CLIPBOARD).request_text(move |_, text| {
             if let Some(text) = text {
@@ -616,6 +699,113 @@ impl EditView {
         });
         state.line_da.queue_draw();
         state.da.queue_draw();
+    }
+
+    // fn do_paste_primary(&self, state: &State, view_id: &str, line: u64, col: u64) {
+    //     let view_id2 = view_id.to_string().clone();
+    //     Clipboard::get(&SELECTION_PRIMARY).request_text(move |_, text| {
+    //         if let Some(text) = text {
+    //             core.gesture_point_select(&view_id2, line, col);
+    //             core.insert(&view_id2, text);
+    //         }
+    //     });
+    // }
+
+    fn on_text_change(&self, state: &mut State) {
+        let mut workspace = state.model.workspace.borrow_mut();
+        let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
+        // if let Some(pristine) = update["pristine"].as_bool() {
+        //     if state.model.pristine != pristine {
+        //         state.model.pristine = pristine;
+        //         self.update_title(state);
+        //     }
+        // }
+
+        state.line_da.queue_draw();
+        state.da.queue_draw();
+
+        // let (text_width, text_height) = self.get_text_size(state);
+        let text_height = buffer.len_lines() as f64 * state.font_height;
+        let vadj = state.vadj.clone();
+        let hadj = state.hadj.clone();
+
+        // update scrollbars to the new text width and height
+        state.vadj.set_lower(0f64);
+        state.vadj.set_upper(text_height as f64);
+        if vadj.get_value() + vadj.get_page_size() > vadj.get_upper() {
+            vadj.set_value(vadj.get_upper() - vadj.get_page_size())
+        }
+
+        // self.update_visible_scroll_region(state)
+
+        // hadj.set_lower(0f64);
+        // hadj.set_upper(text_width as f64);
+        // if hadj.get_value() + hadj.get_page_size() > hadj.get_upper() {
+        //     hadj.set_value(hadj.get_upper() - hadj.get_page_size())
+        // }
+    }
+
+    fn handle_button_press(&self, state: &mut State, eb: &EventButton) {
+        {
+            let view_id = state.model.view_id;
+            let mut workspace = state.model.workspace.borrow_mut();
+            let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
+            state.da.grab_focus();
+
+            let (x, y) = eb.get_position();
+            let (line, byte_idx) =
+                { Self::da_px_to_line_byte_idx(state, buffer, text_theme, x, y) };
+
+            match eb.get_button() {
+                1 => {
+                    if eb.get_state().contains(ModifierType::SHIFT_MASK) {
+                        buffer.gesture_range_select(view_id, line, byte_idx);
+                    } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
+                        buffer.gesture_toggle_sel(view_id, line, byte_idx);
+                    } else if eb.get_event_type() == EventType::DoubleButtonPress {
+                        buffer.gesture_word_select(view_id, line, byte_idx);
+                    } else if eb.get_event_type() == EventType::TripleButtonPress {
+                        buffer.gesture_line_select(view_id, line);
+                    } else {
+                        buffer.gesture_point_select(view_id, line, byte_idx);
+                    }
+                }
+                2 => {
+                    // self.do_paste_primary(&state.model.view_id, line, col);
+                }
+                _ => {}
+            }
+        }
+
+        self.on_text_change(state);
+    }
+
+    fn da_px_to_line_byte_idx(
+        state: &State,
+        buffer: &Buffer,
+        text_theme: &eddy_workspace::style::Theme,
+        x: f64,
+        y: f64,
+    ) -> (usize, usize) {
+        // let first_line = (vadj.get_value() / font_extents.height) as usize;
+        let x = x + state.hadj.get_value();
+        let y = y + state.vadj.get_value();
+        let mut y = y - state.font_descent;
+        if y < 0.0 {
+            y = 0.0;
+        }
+
+        let line_num = (y / state.font_height) as usize;
+        if let Some((line, attrs)) = buffer.get_line_with_attributes(line_num, &text_theme) {
+            let pango_ctx = state.da.get_pango_context();
+
+            let layout = create_layout_for_line(state, &pango_ctx, &line, &[]);
+            let (_, index, trailing) = layout.xy_to_index(x as i32 * pango::SCALE, 0);
+            let index = index + trailing;
+            (line_num, index as usize)
+        } else {
+            (line_num, 0)
+        }
     }
 }
 fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
@@ -770,14 +960,12 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     // Draw the selection highlight background
     cr.set_source_rgba(1.0, 1.0, 0.5, 1.0);
 
-    // let sel_iter = buffer.selections(view_id).iter();
+    // Draw background for selections
     for sel in buffer.selections(view_id) {
         let r = sel.range();
 
         let start_line = buffer.char_to_line(r.start);
         let end_line = buffer.char_to_line(r.end);
-        let start_x = r.start - buffer.line_to_char(start_line);
-        let end_x = r.end - buffer.line_to_char(end_line);
 
         for i in start_line..=end_line {
             let start_x = if i == start_line {
@@ -810,21 +998,14 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     let mut max_width = 0;
     for i in visible_lines {
         // Keep track of the starting x position
-        if i < buffer.len_lines() {
+        if let Some((line, attrs)) = buffer.get_line_with_attributes(i, &text_theme) {
             // let line = buffer.line(i);
-            let (line, attrs) = buffer.get_line_with_attributes(i, &text_theme);
 
             cr.move_to(
                 -hadj.get_value(),
                 state.font_height * (i as f64) - vadj.get_value(),
             );
 
-            // let pango_ctx = self
-            //     .da
-            //     .get_pango_context()
-            //     .expect("failed to get pango ctx");
-
-            // set_source_color(cr, theme.foreground);
             cr.set_source_rgba(
                 text_theme.fg.r_f64(),
                 text_theme.fg.g_f64(),
@@ -845,7 +1026,6 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
             let layout_line = layout_line.unwrap();
 
             // Draw the cursors
-            // set_source_color(cr, theme.caret);
             cr.set_source_rgba(
                 text_theme.cursor.r_f64(),
                 text_theme.cursor.g_f64(),
@@ -899,16 +1079,9 @@ fn create_layout_for_line(
     line: &RopeSlice,
     attr_spans: &[AttrSpan],
 ) -> pango::Layout {
-    // let line_view = if line.text().ends_with('\n') {
-    //     &line.text()[0..line.text().len() - 1]
-    // } else {
-    //     &line.text()
-    // };
-
-    // let layout = create_layout(cr).unwrap();
     let layout = pango::Layout::new(pango_ctx);
-    // TODO Is this how I should do this?
-    layout.set_text(&format!("{}", line));
+    let text: Cow<str> = (*line).into();
+    layout.set_text(&text);
 
     let attr_list = pango::AttrList::new();
     for aspan in attr_spans {
@@ -917,7 +1090,7 @@ fn create_layout_for_line(
                 Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
             }
             Attr::BackgroundColor(color) => {
-                Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
+                Attribute::new_background(color.r_u16(), color.g_u16(), color.b_u16())
             }
         };
         if let Some(ref mut pattr) = pattr {
@@ -1171,38 +1344,6 @@ impl EditView {
         }
 
         self.update_visible_scroll_region(state);
-    }
-
-    fn handle_button_press(&self, state: &mut State, eb: &EventButton) {
-        state.da.grab_focus();
-
-        let (x, y) = eb.get_position();
-        let (col, line) = { self.da_px_to_cell(state, x, y) };
-
-        match eb.get_button() {
-            1 => {
-                if eb.get_state().contains(ModifierType::SHIFT_MASK) {
-                    self.core
-                        .gesture_range_select(&state.model.view_id, line, col);
-                } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
-                    self.core
-                        .gesture_toggle_sel(&state.model.view_id, line, col);
-                } else if eb.get_event_type() == EventType::DoubleButtonPress {
-                    self.core
-                        .gesture_word_select(&state.model.view_id, line, col);
-                } else if eb.get_event_type() == EventType::TripleButtonPress {
-                    self.core
-                        .gesture_line_select(&state.model.view_id, line, col);
-                } else {
-                    self.core
-                        .gesture_point_select(&state.model.view_id, line, col);
-                }
-            }
-            2 => {
-                self.do_paste_primary(&state.model.view_id, line, col);
-            }
-            _ => {}
-        }
     }
 
     fn handle_drag(&self, state: &mut State, em: &EventMotion) {
