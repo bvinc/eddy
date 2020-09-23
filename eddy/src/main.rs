@@ -8,7 +8,6 @@
 // mod main_win;
 mod linecache;
 mod scrollable_drawing_area;
-mod scrollable_drawing_area_orig;
 mod theme;
 mod widget;
 

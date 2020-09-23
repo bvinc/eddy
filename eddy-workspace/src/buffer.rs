@@ -643,16 +643,22 @@ impl Buffer {
         self.selections.insert(view_id, vec![sel]);
     }
     pub fn undo(&mut self) {
-        if self.history_ix > 0 {
-            self.history_ix -= 1;
+        if self.history_ix <= 0 {
+            return;
         }
 
+        self.history_ix -= 1;
+
         self.fix_selections();
+        self.layer.update_highlights(&self.history[self.history_ix]);
     }
     pub fn redo(&mut self) {
         if self.history_ix < self.history.len() - 1 {
             self.history_ix += 1;
         }
+
+        self.fix_selections();
+        self.layer.update_highlights(&self.history[self.history_ix]);
     }
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
         let ret = self.copy(view_id);
@@ -686,6 +692,22 @@ impl Buffer {
         }
     }
     pub fn paste(&mut self, view_id: ViewId) {}
+
+    pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+        let rope = &self.history[self.history_ix];
+        let byte_idx = if line_idx >= rope.len_lines() {
+            rope.len_bytes()
+        } else {
+            min(
+                rope.line_to_byte(line_idx) + line_byte_idx,
+                rope.len_bytes(),
+            )
+        };
+        for sel in self.selections.entry(view_id).or_default() {
+            // sel.start = dbg!(rope.byte_to_char(byte_idx));
+            sel.end = dbg!(rope.byte_to_char(byte_idx));
+        }
+    }
 
     // currently the only thing this does is ensure that all selections are not
     // out of bounds
@@ -745,6 +767,7 @@ impl Buffer {
 
     pub fn get_line_with_attributes(
         &self,
+        view_id: ViewId,
         line_idx: usize,
         theme: &Theme,
     ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
@@ -768,6 +791,7 @@ impl Buffer {
             loop {
                 let mut relevant = false;
                 let mut moved = false;
+                // TODO should this be an || ?
                 if cur.node().start_byte() < line_end && cur.node().end_byte() > line_start {
                     let start_byte = max(line_start, cur.node().start_byte()) - line_start;
                     let end_byte = min(line_end, cur.node().end_byte()) - line_start;
@@ -806,6 +830,37 @@ impl Buffer {
                 }
             }
         }
+
+        for sel in self.selections.get(&view_id).unwrap_or(&vec![]) {
+            if !sel.is_caret() {
+                let r = sel.range();
+                let sel_start_byte = self.char_to_byte(r.start);
+                let sel_end_byte = self.char_to_byte(r.end);
+                let sel_min_byte = min(sel_start_byte, sel_end_byte);
+                let sel_max_byte = max(sel_start_byte, sel_end_byte);
+
+                if sel_min_byte < line_end && sel_max_byte > line_start {
+                    let start_byte = max(line_start, sel_min_byte) - line_start;
+                    let end_byte = min(line_end, sel_max_byte) - line_start;
+                    let attrs = theme.selection.clone();
+                    if let Some(fg) = attrs.fg {
+                        spans.push(AttrSpan {
+                            start_idx: start_byte,
+                            end_idx: end_byte,
+                            attr: Attr::ForegroundColor(fg),
+                        });
+                    }
+                    if let Some(bg) = attrs.bg {
+                        spans.push(AttrSpan {
+                            start_idx: start_byte,
+                            end_idx: end_byte,
+                            attr: Attr::BackgroundColor(bg),
+                        });
+                    }
+                }
+            }
+        }
+
         Some((line, spans))
     }
 }

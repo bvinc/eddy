@@ -71,7 +71,7 @@ impl Layer for RustLayer {
             None, //self.tree.as_ref(),
         );
         if let Some(tree) = &self.tree {
-            print_tree(tree.root_node(), 0);
+            // print_tree(tree.root_node(), 0);
 
             self.node_to_capture.clear();
             let query = RustLayer::highlights_query();

@@ -12,10 +12,23 @@ pub struct ThemeAttributes {
     pub bold: Option<bool>,
 }
 
+impl ThemeAttributes {
+    fn from_file_attrs(tfa: ThemeFileAttributes) -> Self {
+        let fg = tfa.fg.and_then(|s| Color::from_str(&s).ok());
+        let bg = tfa.bg.and_then(|s| Color::from_str(&s).ok());
+        ThemeAttributes {
+            fg,
+            bg,
+            bold: tfa.bold,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub fg: Color,
     pub bg: Color,
+    pub selection: ThemeAttributes,
     pub cursor: Color,
     highlights: HashMap<Capture, ThemeAttributes>,
 }
@@ -27,6 +40,7 @@ impl Theme {
 fg     = "#fdf4c1"
 bg     = "#282828"
 cursor = "#fdf4c1"
+selection = {bg = "#4e4e4e"}
 line_number = {fg = "#7c6f64"}
 
 [highlights]
@@ -56,24 +70,20 @@ line_number = {fg = "#7c6f64"}
     }
     pub fn from_str(s: &str) -> Result<Theme, Box<dyn Error>> {
         let tf: ThemeFile = toml::from_str(s)?;
+        let selection = ThemeAttributes::from_file_attrs(tf.selection);
         let mut highlights = HashMap::new();
         for (name, value) in tf.highlights {
             let cap = Capture::from_name(&name);
-            let fg = value.fg.and_then(|s| Color::from_str(&s).ok());
-            let bg = value.bg.and_then(|s| Color::from_str(&s).ok());
-            let a = ThemeAttributes {
-                fg,
-                bg,
-                bold: value.bold,
-            };
+            let theme_attributes = ThemeAttributes::from_file_attrs(value);
             if let Some(cap) = cap {
-                highlights.insert(cap, a);
+                highlights.insert(cap, theme_attributes);
             }
         }
         Ok(Theme {
             fg: Color::from_str(&tf.fg)?,
             bg: Color::from_str(&tf.bg)?,
             cursor: Color::from_str(&tf.cursor)?,
+            selection,
             highlights,
         })
     }
@@ -87,6 +97,7 @@ struct ThemeFile {
     pub fg: String,
     pub bg: String,
     pub cursor: String,
+    pub selection: ThemeFileAttributes,
     pub highlights: HashMap<String, ThemeFileAttributes>,
 }
 #[derive(Debug, Clone, Deserialize)]

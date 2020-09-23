@@ -127,7 +127,7 @@ impl Update for EditView {
             // Msg::FindStatus(queries) => self.find_status(&mut state, &queries),
             Msg::KeyPress(ek) => self.handle_key_press_event(&mut state, &ek),
             // Msg::ConfigChanged(changes) => self.config_changed(&mut state, &changes),
-            // Msg::MotionNotify(em) => self.handle_drag(&mut state, &em),
+            Msg::MotionNotify(em) => self.handle_drag(&mut state, &em),
             Msg::ScrollEvent(es) => self.handle_scroll(&mut state, &es),
             Msg::ScrollTo(line, col) => self.scroll_to(&mut state, line, col),
             Msg::SizeAllocate(w, h) => self.da_size_allocate(&mut state, w, h),
@@ -671,6 +671,21 @@ impl EditView {
         // self.update_visible_scroll_region(state);
     }
 
+    fn handle_drag(&self, state: &mut State, em: &EventMotion) {
+        let view_id = state.model.view_id;
+        let mut workspace = state.model.workspace.borrow_mut();
+        let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
+
+        let (x, y) = em.get_position();
+        let (line, byte_idx) = { Self::da_px_to_line_byte_idx(state, buffer, text_theme, x, y) };
+        dbg!(line, byte_idx);
+
+        workspace.drag(view_id, line, byte_idx);
+
+        state.line_da.queue_draw();
+        state.da.queue_draw();
+    }
+
     fn do_cut(&self, state: &State) {
         let view_id = state.model.view_id;
         let mut workspace = state.model.workspace.borrow_mut();
@@ -796,7 +811,9 @@ impl EditView {
         }
 
         let line_num = (y / state.font_height) as usize;
-        if let Some((line, attrs)) = buffer.get_line_with_attributes(line_num, &text_theme) {
+        if let Some((line, attrs)) =
+            buffer.get_line_with_attributes(state.model.view_id, line_num, &text_theme)
+        {
             let pango_ctx = state.da.get_pango_context();
 
             let layout = create_layout_for_line(state, &pango_ctx, &line, &[]);
@@ -957,48 +974,11 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     //     }
     // }
 
-    // Draw the selection highlight background
-    cr.set_source_rgba(1.0, 1.0, 0.5, 1.0);
-
-    // Draw background for selections
-    for sel in buffer.selections(view_id) {
-        let r = sel.range();
-
-        let start_line = buffer.char_to_line(r.start);
-        let end_line = buffer.char_to_line(r.end);
-
-        for i in start_line..=end_line {
-            let start_x = if i == start_line {
-                (r.start - buffer.line_to_char(start_line)) as f64 * state.font_width
-            } else {
-                0f64
-            };
-            let end_x = if i == end_line {
-                (r.end - buffer.line_to_char(end_line)) as f64 * state.font_width
-            } else {
-                da_width as f64
-            };
-            // if buffer.char_to_line(r.start) != i {
-            //     continue;
-            // }
-            // let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
-            // let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
-            cr.rectangle(
-                start_x - hadj.get_value(),
-                (((state.font_height) as usize) * i) as f64 - vadj.get_value(),
-                end_x - start_x,
-                state.font_height,
-            );
-            cr.fill();
-        }
-    }
-    cr.fill();
-
     const CURSOR_WIDTH: f64 = 2.0;
     let mut max_width = 0;
     for i in visible_lines {
         // Keep track of the starting x position
-        if let Some((line, attrs)) = buffer.get_line_with_attributes(i, &text_theme) {
+        if let Some((line, attrs)) = buffer.get_line_with_attributes(view_id, i, &text_theme) {
             // let line = buffer.line(i);
 
             cr.move_to(
@@ -1015,7 +995,6 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
 
             let layout = create_layout_for_line(state, &pango_ctx, &line, &attrs);
             max_width = max(max_width, layout.get_extents().1.width);
-            // debug!("width={}", layout.get_extents().1.width);
             update_layout(cr, &layout);
             show_layout(cr, &layout);
 

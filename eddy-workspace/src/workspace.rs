@@ -183,12 +183,16 @@ impl Workspace {
         self.buffer(view_id).paste(view_id);
     }
 
+    pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+        self.buffer(view_id).drag(view_id, line_idx, line_byte_idx);
+    }
+
     pub fn get_line_with_attributes(
         &mut self,
         view_id: ViewId,
         line_idx: usize,
     ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
         let (buffer, theme) = self.buffer_and_theme(view_id);
-        buffer.get_line_with_attributes(line_idx, &theme)
+        buffer.get_line_with_attributes(line_idx, view_id, &theme)
     }
 }
