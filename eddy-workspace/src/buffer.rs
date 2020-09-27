@@ -1,6 +1,8 @@
 use crate::language::go::GoLayer;
 use crate::language::{self, Layer, NilLayer};
+use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
+use crate::tab_mode::TabMode;
 use crate::Range;
 use crate::Selection;
 use crate::ViewId;
@@ -22,6 +24,9 @@ pub struct Buffer {
     history: Vec<Rope>,
     selections: HashMap<ViewId, Vec<Selection>>,
     layer: Box<dyn Layer>,
+    line_ending: LineEnding,
+    tab_mode: TabMode,
+    tab_size: usize,
 }
 
 impl Buffer {
@@ -32,6 +37,9 @@ impl Buffer {
             history: vec![Rope::new()],
             selections: HashMap::new(),
             layer: Box::new(NilLayer::new()),
+            line_ending: LineEnding::LF,
+            tab_mode: TabMode::Spaces(4),
+            tab_size: 8,
         }
     }
     pub fn from_file(path: &Path) -> Result<Self, io::Error> {
@@ -43,6 +51,9 @@ impl Buffer {
             history: vec![rope],
             selections: HashMap::new(),
             layer: language::layer_from_path(path),
+            line_ending: LineEnding::LF,
+            tab_mode: TabMode::Spaces(4),
+            tab_size: 8,
         })
     }
 
@@ -115,7 +126,8 @@ impl Buffer {
     /// eventually call.
     pub fn insert_at(&mut self, char_idx: usize, text: &str) {
         let rope = &mut self.history[self.history_ix];
-        rope.insert(char_idx, text);
+        let text = self.line_ending.normalize(text);
+        rope.insert(char_idx, &text);
         let size = text.chars().count();
         for sels in &mut self.selections.values_mut() {
             for sel in sels {
@@ -138,8 +150,9 @@ impl Buffer {
             self.remove(sel.range());
         }
         for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+            let mut sel = self.selections.get(&view_id).unwrap()[i];
             self.insert_at(sel.cursor(), text);
+            sel.horiz = None;
         }
 
         let rope = &self.history[self.history_ix].clone();
@@ -202,6 +215,7 @@ impl Buffer {
         let rope = &self.history[self.history_ix];
 
         for sel in self.selections.entry(view_id).or_default() {
+            sel.horiz = None;
             if sel.is_caret() {
                 // move cursor to the left
                 if sel.start > 0 {
@@ -224,6 +238,7 @@ impl Buffer {
 
         let len_chars = rope.len_chars();
         for sel in self.selections.entry(view_id).or_default() {
+            sel.horiz = None;
             if sel.is_caret() {
                 // move cursor to the right
                 if sel.start < len_chars {
@@ -240,22 +255,93 @@ impl Buffer {
         }
     }
 
-    fn up(rope: &Rope, char_idx: usize) -> (usize, Option<usize>) {
+    /// Given a character location, and a saved horizontal offset, return a new
+    /// character location and a new saved horizontal offset.
+    fn up(
+        rope: &Rope,
+        char_idx: usize,
+        horiz: Option<usize>,
+        tab_size: usize,
+    ) -> (usize, Option<usize>) {
         let line = rope.char_to_line(char_idx);
         let line_home = rope.line_to_char(line);
-        let x_diff = char_idx - line_home;
+        // If we don't currently have a horizontal alignment, calculate the
+        // graphemes from the line start.
+        let horiz = horiz.unwrap_or_else(|| {
+            RopeGraphemes::new(&rope.slice(line_home..char_idx))
+                .map(|slice| {
+                    if slice.len_bytes() == 1 && slice.char(0) == '\t' {
+                        8
+                    } else {
+                        1
+                    }
+                })
+                .sum()
+        });
+
+        if char_idx == 0 {
+            // Only if we're already at the end of the line, set the
+            // horiz.
+            return (char_idx, Some(0));
+        }
+
+        if line == 0 {
+            // There is no next line
+            // Move the cursor to the last character on the line
+            return (0, Some(horiz));
+        }
+
         let prev_line = line.saturating_sub(1);
         let prev_line_home = rope.line_to_char(prev_line);
         let prev_line_end = line_home.saturating_sub(1);
-        let final_char = min(prev_line_end, prev_line_home + x_diff);
-        (final_char, Some(x_diff))
+
+        // iterate through the line's characters to find where we end up
+        let mut final_char = prev_line_home;
+        let mut x_diff = 0;
+
+        // Itearate the graphemes on the line above, come up with a left
+        // candidate and right candidate position
+        let mut left_cand = (prev_line_home, 0);
+        let mut right_cand = None;
+        for g in RopeGraphemes::new(&rope.slice(prev_line_home..prev_line_end)) {
+            if x_diff <= horiz {
+                left_cand = (final_char, x_diff);
+            } else {
+                right_cand = Some((final_char, x_diff));
+                break;
+            }
+
+            if g.len_bytes() == 1 && g.char(0) == '\t' {
+                x_diff += ((x_diff / tab_size) + 1) * tab_size;
+            } else {
+                x_diff += 1
+            }
+            final_char += g.len_chars();
+        }
+        if x_diff <= horiz {
+            left_cand = (final_char, x_diff);
+        } else {
+            right_cand = Some((final_char, x_diff));
+        }
+
+        // Go to the closest position to our horizontal alignment
+        // If it's a tie, the left one wins.
+        if let Some(right_cand) = right_cand {
+            if horiz - left_cand.1 <= right_cand.1 - horiz {
+                (left_cand.0, Some(horiz))
+            } else {
+                (right_cand.0, Some(horiz))
+            }
+        } else {
+            (left_cand.0, Some(horiz))
+        }
     }
 
     /// Move the cursor up
     pub fn move_up(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
         for sel in self.selections.entry(view_id).or_default() {
-            let (final_char, horiz) = Self::up(rope, sel.cursor());
+            let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.start = final_char;
             sel.end = final_char;
@@ -266,89 +352,121 @@ impl Buffer {
     pub fn move_up_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
         for sel in self.selections.entry(view_id).or_default() {
-            let (final_char, horiz) = Self::up(rope, sel.cursor());
+            let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.end = final_char;
         }
     }
 
-    /// Move the cursor up
-    pub fn move_down(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+    /// Given a character location, and a saved horizontal offset, return a new
+    /// character location and a new saved horizontal offset.
+    fn down(
+        rope: &Rope,
+        char_idx: usize,
+        horiz: Option<usize>,
+        tab_size: usize,
+    ) -> (usize, Option<usize>) {
+        let line = rope.char_to_line(char_idx);
         let len_lines = rope.len_lines();
         let len_chars = rope.len_chars();
-        for sel in self.selections.entry(view_id).or_default() {
-            let line = rope.char_to_line(sel.cursor());
-            let line_home = rope.line_to_char(line);
-            let x_diff = sel.cursor() - line_home;
-            if line == len_lines - 1 {
-                // There is no next line
-                if sel.cursor() == len_chars {
-                    // Only if we're already at the end of the line, set the
-                    // horiz. This is what gnome gedit does.
-                    sel.horiz = Some(x_diff);
-                    return;
+        let line_home = rope.line_to_char(line);
+
+        let cur_x_diff = RopeGraphemes::new(&rope.slice(line_home..char_idx))
+            .map(|slice| {
+                if slice.len_bytes() == 1 && slice.char(0) == '\t' {
+                    8
+                } else {
+                    1
                 }
-                // Move the cursor to the last character on the line
-                sel.start = len_chars;
-                sel.end = len_chars;
-                return;
-            }
-            //let next_line = if line < len_lines { line + 1 } else { line };
-            let next_line = line + 1;
-            let next_line_home = rope.line_to_char(next_line);
-            let next_line_end = if next_line == len_lines - 1 {
-                // There's no line after next, so the end is the last char of
-                // the buffer
-                len_chars
+            })
+            .sum();
+
+        if char_idx == len_chars {
+            // Only if we're already at the end of the line, set the
+            // horiz.
+            return (char_idx, Some(cur_x_diff));
+        }
+
+        // If we don't currently have a horizontal alignment, calculate the
+        // graphemes from the line start.
+        let horiz = horiz.unwrap_or_else(|| cur_x_diff);
+
+        if line == len_lines - 1 {
+            // There is no next line
+            // Move the cursor to the last character on the line
+            return (len_chars, Some(horiz));
+        }
+
+        let next_line = line + 1;
+        let next_line_home = rope.line_to_char(next_line);
+        let next_line_end = if next_line == len_lines - 1 {
+            // There's no line after next, so the end is the last char of
+            // the buffer
+            len_chars
+        } else {
+            rope.line_to_char(next_line + 1) - 1
+        };
+
+        // iterate through the line's characters to find where we end up
+        let mut final_char = next_line_home;
+        let mut x_diff = 0;
+
+        // Itearate the graphemes on the line above, come up with a left
+        // candidate and right candidate position
+        let mut left_cand = (next_line_home, 0);
+        let mut right_cand = None;
+        for g in RopeGraphemes::new(&rope.slice(next_line_home..next_line_end)) {
+            if x_diff <= horiz {
+                left_cand = (final_char, x_diff);
             } else {
-                rope.line_to_char(next_line + 1) - 1
-            };
-            // char_want is the ideal location
-            let char_want = next_line_home + x_diff;
-            let final_char = min(next_line_end, max(next_line_home, char_want));
+                right_cand = Some((final_char, x_diff));
+                break;
+            }
+
+            if g.len_bytes() == 1 && g.char(0) == '\t' {
+                x_diff += ((x_diff / tab_size) + 1) * tab_size;
+            } else {
+                x_diff += 1
+            }
+            final_char += g.len_chars();
+        }
+        if x_diff <= horiz {
+            left_cand = (final_char, x_diff);
+        } else {
+            right_cand = Some((final_char, x_diff));
+        }
+
+        // Go to the closest position to our horizontal alignment
+        // If it's a tie, the left one wins.
+        if let Some(right_cand) = right_cand {
+            if horiz - left_cand.1 <= right_cand.1 - horiz {
+                (left_cand.0, Some(horiz))
+            } else {
+                (right_cand.0, Some(horiz))
+            }
+        } else {
+            (left_cand.0, Some(horiz))
+        }
+    }
+
+    /// Move the cursor down
+    pub fn move_down(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+        for sel in self.selections.entry(view_id).or_default() {
+            let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
+            sel.horiz = horiz;
             sel.start = final_char;
             sel.end = final_char;
-            sel.horiz = Some(x_diff);
         }
     }
 
     /// Move the cursor down while modifying the selection region
     pub fn move_down_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
-        let len_lines = rope.len_lines();
-        let len_chars = rope.len_chars();
         for sel in self.selections.entry(view_id).or_default() {
-            let line = rope.char_to_line(sel.cursor());
-            let line_home = rope.line_to_char(line);
-            let x_diff = sel.cursor() - line_home;
-            if line == len_lines - 1 {
-                // There is no next line
-                if sel.cursor() == len_chars {
-                    // Only if we're already at the end of the line, set the
-                    // horiz. This is what gnome gedit does.
-                    sel.horiz = Some(x_diff);
-                    return;
-                }
-                // Move the cursor to the last character on the line
-                sel.end = len_chars;
-                return;
-            }
-            //let next_line = if line < len_lines { line + 1 } else { line };
-            let next_line = line + 1;
-            let next_line_home = rope.line_to_char(next_line);
-            let next_line_end = if next_line == len_lines - 1 {
-                // There's no line after next, so the end is the last char of
-                // the buffer
-                len_chars
-            } else {
-                rope.line_to_char(next_line + 1) - 1
-            };
-            // char_want is the ideal location
-            let char_want = next_line_home + x_diff;
-            let final_char = min(next_line_end, max(next_line_home, char_want));
+            let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
+            sel.horiz = horiz;
             sel.end = final_char;
-            sel.horiz = Some(x_diff);
         }
     }
 
@@ -728,6 +846,31 @@ impl Buffer {
         }
     }
 
+    pub fn check_invariants(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+        debug_assert!(self.selections.get(&view_id).unwrap().len() > 0);
+        for sel in self.selections.entry(view_id).or_default() {
+            dbg!(
+                rope,
+                sel.start,
+                rope.len_chars(),
+                prev_grapheme_boundary(rope, sel.start),
+                next_grapheme_boundary(rope, sel.start),
+                prev_grapheme_boundary(rope, next_grapheme_boundary(rope, sel.start))
+            );
+            debug_assert!(
+                sel.start == rope.len_chars()
+                    || sel.start
+                        == prev_grapheme_boundary(rope, next_grapheme_boundary(rope, sel.start))
+            );
+            debug_assert!(
+                sel.end == rope.len_chars()
+                    || sel.end
+                        == prev_grapheme_boundary(rope, next_grapheme_boundary(rope, sel.end))
+            );
+        }
+    }
+
     pub fn len_bytes(&self) -> usize {
         let rope = &self.history[self.history_ix];
         rope.len_bytes()
@@ -936,5 +1079,315 @@ fn next_grapheme_boundary(slice: &Rope, char_idx: usize) -> usize {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+/// An implementation of a graphemes iterator, for iterating over
+/// the graphemes of a RopeSlice.
+struct RopeGraphemes<'a> {
+    text: RopeSlice<'a>,
+    chunks: ropey::iter::Chunks<'a>,
+    cur_chunk: &'a str,
+    cur_chunk_start: usize,
+    cursor: GraphemeCursor,
+}
+
+impl<'a> RopeGraphemes<'a> {
+    fn new<'b>(slice: &RopeSlice<'b>) -> RopeGraphemes<'b> {
+        let mut chunks = slice.chunks();
+        let first_chunk = chunks.next().unwrap_or("");
+        RopeGraphemes {
+            text: *slice,
+            chunks,
+            cur_chunk: first_chunk,
+            cur_chunk_start: 0,
+            cursor: GraphemeCursor::new(0, slice.len_bytes(), true),
+        }
+    }
+}
+
+impl<'a> Iterator for RopeGraphemes<'a> {
+    type Item = RopeSlice<'a>;
+
+    fn next(&mut self) -> Option<RopeSlice<'a>> {
+        let a = self.cursor.cur_cursor();
+        let b;
+        loop {
+            match self
+                .cursor
+                .next_boundary(self.cur_chunk, self.cur_chunk_start)
+            {
+                Ok(None) => {
+                    return None;
+                }
+                Ok(Some(n)) => {
+                    b = n;
+                    break;
+                }
+                Err(GraphemeIncomplete::NextChunk) => {
+                    self.cur_chunk_start += self.cur_chunk.len();
+                    self.cur_chunk = self.chunks.next().unwrap_or("");
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        if a < self.cur_chunk_start {
+            let a_char = self.text.byte_to_char(a);
+            let b_char = self.text.byte_to_char(b);
+
+            Some(self.text.slice(a_char..b_char))
+        } else {
+            let a2 = a - self.cur_chunk_start;
+            let b2 = b - self.cur_chunk_start;
+            Some((&self.cur_chunk[a2..b2]).into())
+        }
+    }
+}
+/*
+struct GraphemeIterator {
+    gc: GraphemeCursor,
+}
+
+impl GraphemeIterator {
+    fn new(slice: &Rope, char_idx: usize) -> Self {
+        // Bounds check
+        debug_assert!(char_idx <= slice.len_chars());
+
+        // We work with bytes for this, so convert.
+        let byte_idx = slice.char_to_byte(char_idx);
+
+        // Get the chunk with our byte index in it.
+        let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
+
+        // Set up the grapheme cursor.
+        let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
+        GraphemeIterator {}
+    }
+}
+
+impl Iterator for GraphemeIterator {
+    type Item = usize;
+    fn next() -> Option<Item> {}
+}
+*/
+impl ToString for Buffer {
+    #[inline]
+    fn to_string(&self) -> String {
+        self.history[self.history_ix].slice(..).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insert() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "a");
+        assert_eq!(buf.to_string(), "a");
+    }
+    #[test]
+    fn test_insert2() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "a");
+        buf.insert(0, "b");
+        buf.insert(0, "cd");
+        assert_eq!(buf.to_string(), "abcd");
+    }
+
+    #[test]
+    fn test_move_left() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "a");
+        buf.insert(0, "b");
+        buf.move_left(0);
+        buf.insert(0, "cd");
+        assert_eq!(buf.to_string(), "acdb");
+    }
+    #[test]
+    fn test_move_left_right() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "a");
+        buf.insert(0, "b");
+        buf.move_left(0);
+        buf.move_right(0);
+        buf.insert(0, "cd");
+        assert_eq!(buf.to_string(), "abcd");
+    }
+
+    #[test]
+    fn test_move_left_too_far() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.move_left(0);
+        buf.move_left(0);
+        buf.move_left(0);
+        buf.insert(0, "abc");
+        assert_eq!(buf.to_string(), "abc");
+    }
+    #[test]
+    fn test_move_right_too_far() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.move_right(0);
+        buf.move_right(0);
+        buf.move_right(0);
+        buf.insert(0, "abc");
+        assert_eq!(buf.to_string(), "abc");
+    }
+
+    #[test]
+    fn test_move_left_and_modify_selection() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc");
+        buf.move_left_and_modify_selection(0);
+        buf.move_left_and_modify_selection(0);
+        buf.insert(0, "de");
+        assert_eq!(buf.to_string(), "ade");
+        buf.move_left_and_modify_selection(0);
+        buf.insert(0, "f");
+        assert_eq!(buf.to_string(), "adf");
+    }
+    #[test]
+    fn test_move_right_and_modify_selection() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc");
+        buf.move_left(0);
+        buf.move_left(0);
+        buf.move_right_and_modify_selection(0);
+        buf.move_right_and_modify_selection(0);
+        buf.insert(0, "de");
+        assert_eq!(buf.to_string(), "ade");
+    }
+    #[test]
+    fn test_move_up() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc\ndef");
+        buf.move_left(0);
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "ab_c\ndef");
+    }
+    #[test]
+    fn test_move_up2() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "a\nbcd");
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "a_\nbcd");
+    }
+    #[test]
+    fn test_move_up_to_tab_0() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "\tabc");
+        buf.insert_newline(0);
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "_\tabc\n");
+    }
+    #[test]
+    fn test_move_up_to_tab_4() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "\tabc");
+        buf.insert_newline(0);
+        buf.insert(0, "    ");
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "_\tabc\n    ");
+    }
+    #[test]
+    fn test_move_up_to_tab_8() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "\tabc");
+        buf.insert_newline(0);
+        buf.insert(0, "        ");
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "\t_abc\n        ");
+    }
+    #[test]
+    fn test_move_up_to_tab_9() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "\tabc");
+        buf.insert_newline(0);
+        buf.insert(0, "         ");
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "\ta_bc\n         ");
+    }
+    #[test]
+    fn test_move_up_from_tab() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abcdefghi");
+        buf.insert_newline(0);
+        buf.insert(0, "\t");
+        buf.move_up(0);
+        buf.insert(0, "_");
+        assert_eq!(buf.to_string(), "abcdefgh_i\n\t");
+    }
+    #[test]
+    fn test_move_down() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc\ndef");
+        buf.move_left(0);
+        buf.move_up(0);
+        buf.move_down(0);
+        assert_eq!(
+            buf.selections.get(&0).unwrap(),
+            &vec![Selection {
+                start: 6,
+                end: 6,
+                horiz: Some(2),
+            }]
+        );
+    }
+    #[test]
+    fn test_move_down2() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc\nd");
+        buf.move_left(0);
+        buf.move_left(0);
+        buf.move_down(0);
+        assert_eq!(
+            buf.selections.get(&0).unwrap(),
+            &vec![Selection {
+                start: 5,
+                end: 5,
+                horiz: Some(3),
+            }]
+        );
+    }
+    #[test]
+    fn test_move_down3() {
+        let mut buf = Buffer::new();
+        buf.init_view(0);
+        buf.insert(0, "abc");
+        buf.move_left(0);
+        buf.move_down(0);
+        assert_eq!(
+            buf.selections.get(&0).unwrap(),
+            &vec![Selection {
+                start: 3,
+                end: 3,
+                horiz: None,
+            }]
+        );
     }
 }

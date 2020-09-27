@@ -462,6 +462,45 @@ mod tests {
         assert_eq!(view.to_string(), "age\nbcd");
     }
     #[test]
+    fn test_move_up_to_tab_0() {
+        let mut view = View::new();
+        view.insert("\tabc");
+        view.insert_newline();
+        view.move_up();
+        view.insert("de");
+        assert_eq!(view.to_string(), "de\tabc");
+    }
+    #[test]
+    fn test_move_up_to_tab_4() {
+        let mut view = View::new();
+        view.insert("\tabc");
+        view.insert_newline();
+        view.insert("    ");
+        view.move_up();
+        view.insert("de");
+        assert_eq!(view.to_string(), "de\tabc");
+    }
+    #[test]
+    fn test_move_up_to_tab_8() {
+        let mut view = View::new();
+        view.insert("\tabc");
+        view.insert_newline();
+        view.insert("        ");
+        view.move_up();
+        view.insert("de");
+        assert_eq!(view.to_string(), "\tdeabc");
+    }
+    #[test]
+    fn test_move_up_to_tab_9() {
+        let mut view = View::new();
+        view.insert("\tabc");
+        view.insert_newline();
+        view.insert("         ");
+        view.move_up();
+        view.insert("de");
+        assert_eq!(view.to_string(), "\tadebc");
+    }
+    #[test]
     fn test_move_down() {
         let mut view = View::new();
         view.insert("abc\ndef");

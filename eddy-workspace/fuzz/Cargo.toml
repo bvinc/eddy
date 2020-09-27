@@ -1,0 +1,27 @@
+
+[package]
+name = "eddy-workspace-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "0.3.0", optional = true, features = ["derive"] }
+libfuzzer-sys = { version = "0.3.0", features = ["arbitrary-derive"] }
+
+[dependencies.eddy-workspace]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "buffer"
+path = "fuzz_targets/buffer.rs"
+test = false
+doc = false
