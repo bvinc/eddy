@@ -1,4 +1,3 @@
-use crate::linecache::{Line, LineCache};
 use crate::scrollable_drawing_area::ScrollableDrawingArea;
 // use crate::scrollable_drawing_area_orig::ScrollableDrawingArea;
 use crate::theme::{set_source_color, Theme};

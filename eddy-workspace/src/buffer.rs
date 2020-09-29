@@ -1,4 +1,6 @@
-use crate::language::go::GoLayer;
+use crate::graphemes::{
+    next_grapheme_boundary, prev_grapheme_boundary, RopeGraphemes, RopeGraphemesRev,
+};
 use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
@@ -6,8 +8,7 @@ use crate::tab_mode::TabMode;
 use crate::Range;
 use crate::Selection;
 use crate::ViewId;
-use eddy_ts::{Parser, Tree};
-use ropey::{str_utils::byte_to_char_idx, Rope, RopeSlice};
+use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
 use std::cmp::{max, min};
 use std::collections::HashMap;
@@ -15,7 +16,6 @@ use std::fs::File;
 use std::io::{self, BufReader};
 use std::ops::RangeBounds;
 use std::path::{Path, PathBuf};
-use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
 // #[derive(Debug)]
 pub struct Buffer {
@@ -470,10 +470,106 @@ impl Buffer {
         }
     }
 
-    /// TODO move the cursor to the left to the next word boundry
-    pub fn move_word_left(&mut self, view_id: ViewId) {}
-    /// TODO move the cursor to the right to the next word boundry
-    pub fn move_word_right(&mut self, view_id: ViewId) {}
+    /// Given a character location, return a new character location to the next
+    /// left-word-boundary
+    fn word_left(rope: &Rope, char_idx: usize) -> usize {
+        enum State {
+            Whitespace,
+            Symbols,
+            Letters,
+        };
+        let mut state = State::Whitespace;
+
+        let mut final_char = char_idx;
+        for g in RopeGraphemesRev::new(&rope.slice(0..char_idx)) {
+            let mut is_letter = false;
+            let mut is_space = false;
+            if g.len_chars() == 1 {
+                let c = g.char(0);
+                is_space = c.is_whitespace();
+                is_letter = c.is_alphanumeric() || c == '_';
+            }
+            let is_symbol = !is_space && !is_letter;
+
+            match state {
+                State::Whitespace if is_space => {}
+                State::Whitespace if is_letter => state = State::Letters,
+                State::Whitespace => state = State::Symbols,
+                State::Symbols if is_symbol => {}
+                State::Symbols => {
+                    return final_char;
+                }
+                State::Letters if is_letter => {}
+                State::Letters => {
+                    return final_char;
+                }
+            }
+            final_char -= g.len_chars();
+        }
+        0
+    }
+
+    /// Given a character location, return a new character location to the next
+    /// right-word-boundary
+    fn word_right(rope: &Rope, char_idx: usize) -> usize {
+        enum State {
+            Whitespace,
+            Symbols,
+            Letters,
+        };
+        let mut state = State::Whitespace;
+
+        let mut final_char = char_idx;
+        for g in RopeGraphemes::new(&rope.slice(char_idx..rope.len_chars())) {
+            let mut is_letter = false;
+            let mut is_space = false;
+            if g.len_chars() == 1 {
+                let c = g.char(0);
+                is_space = c.is_whitespace();
+                is_letter = c.is_alphanumeric() || c == '_';
+            }
+            let is_symbol = !is_space && !is_letter;
+
+            match state {
+                State::Whitespace if is_space => {}
+                State::Whitespace if is_letter => state = State::Letters,
+                State::Whitespace => state = State::Symbols,
+                State::Symbols if is_symbol => {}
+                State::Symbols => {
+                    return final_char;
+                }
+                State::Letters if is_letter => {}
+                State::Letters => {
+                    return final_char;
+                }
+            }
+            final_char += g.len_chars();
+        }
+        rope.len_chars()
+    }
+
+    /// move the cursor to the left to the next word boundry
+    pub fn move_word_left(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
+        for sel in self.selections.entry(view_id).or_default() {
+            let word_right = Self::word_left(rope, sel.end);
+            sel.start = word_right;
+            sel.end = word_right;
+            sel.horiz = None;
+        }
+    }
+    /// move the cursor to the right to the next word boundry
+    pub fn move_word_right(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
+        for sel in self.selections.entry(view_id).or_default() {
+            let word_right = Self::word_right(rope, sel.end);
+            sel.start = word_right;
+            sel.end = word_right;
+            sel.horiz = None;
+        }
+    }
 
     /// Move the cursor left while modifying the selection region
     pub fn move_left_and_modify_selection(&mut self, view_id: ViewId) {
@@ -500,12 +596,28 @@ impl Buffer {
         }
     }
 
-    /// TODO move the cursor to the left to the next word boundry while
-    /// modifying the seleciton region
-    pub fn move_word_left_and_modify_selection(&mut self, view_id: ViewId) {}
-    /// TODO move the cursor to the right to the next word boundry while
-    /// modifying the seleciton region
-    pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {}
+    /// move the cursor to the left to the next word boundry while modifying
+    /// the seleciton region
+    pub fn move_word_left_and_modify_selection(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
+        for sel in self.selections.entry(view_id).or_default() {
+            let word_right = Self::word_left(rope, sel.end);
+            sel.end = word_right;
+            sel.horiz = None;
+        }
+    }
+    /// move the cursor to the right to the next word boundry while modifying
+    /// the seleciton region
+    pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {
+        let rope = &self.history[self.history_ix];
+
+        for sel in self.selections.entry(view_id).or_default() {
+            let word_right = Self::word_right(rope, sel.end);
+            sel.end = word_right;
+            sel.horiz = None;
+        }
+    }
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
         let rope = &self.history[self.history_ix];
@@ -1008,142 +1120,6 @@ impl Buffer {
     }
 }
 
-/// Finds the previous grapheme boundary before the given char position.
-fn prev_grapheme_boundary(slice: &Rope, char_idx: usize) -> usize {
-    // Bounds check
-    debug_assert!(char_idx <= slice.len_chars());
-
-    // We work with bytes for this, so convert.
-    let byte_idx = slice.char_to_byte(char_idx);
-
-    // Get the chunk with our byte index in it.
-    let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
-
-    // Set up the grapheme cursor.
-    let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
-
-    // Find the previous grapheme cluster boundary.
-    loop {
-        match gc.prev_boundary(chunk, chunk_byte_idx) {
-            Ok(None) => return 0,
-            Ok(Some(n)) => {
-                let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
-                return chunk_char_idx + tmp;
-            }
-            Err(GraphemeIncomplete::PrevChunk) => {
-                let (a, b, c, _) = slice.chunk_at_byte(chunk_byte_idx - 1);
-                chunk = a;
-                chunk_byte_idx = b;
-                chunk_char_idx = c;
-            }
-            Err(GraphemeIncomplete::PreContext(n)) => {
-                let ctx_chunk = slice.chunk_at_byte(n - 1).0;
-                gc.provide_context(ctx_chunk, n - ctx_chunk.len());
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
-/// Finds the next grapheme boundary after the given char position.
-fn next_grapheme_boundary(slice: &Rope, char_idx: usize) -> usize {
-    // Bounds check
-    debug_assert!(char_idx <= slice.len_chars());
-
-    // We work with bytes for this, so convert.
-    let byte_idx = slice.char_to_byte(char_idx);
-
-    // Get the chunk with our byte index in it.
-    let (mut chunk, mut chunk_byte_idx, mut chunk_char_idx, _) = slice.chunk_at_byte(byte_idx);
-
-    // Set up the grapheme cursor.
-    let mut gc = GraphemeCursor::new(byte_idx, slice.len_bytes(), true);
-
-    // Find the next grapheme cluster boundary.
-    loop {
-        match gc.next_boundary(chunk, chunk_byte_idx) {
-            Ok(None) => return slice.len_chars(),
-            Ok(Some(n)) => {
-                let tmp = byte_to_char_idx(chunk, n - chunk_byte_idx);
-                return chunk_char_idx + tmp;
-            }
-            Err(GraphemeIncomplete::NextChunk) => {
-                chunk_byte_idx += chunk.len();
-                let (a, _, c, _) = slice.chunk_at_byte(chunk_byte_idx);
-                chunk = a;
-                chunk_char_idx = c;
-            }
-            Err(GraphemeIncomplete::PreContext(n)) => {
-                let ctx_chunk = slice.chunk_at_byte(n - 1).0;
-                gc.provide_context(ctx_chunk, n - ctx_chunk.len());
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
-/// An implementation of a graphemes iterator, for iterating over
-/// the graphemes of a RopeSlice.
-struct RopeGraphemes<'a> {
-    text: RopeSlice<'a>,
-    chunks: ropey::iter::Chunks<'a>,
-    cur_chunk: &'a str,
-    cur_chunk_start: usize,
-    cursor: GraphemeCursor,
-}
-
-impl<'a> RopeGraphemes<'a> {
-    fn new<'b>(slice: &RopeSlice<'b>) -> RopeGraphemes<'b> {
-        let mut chunks = slice.chunks();
-        let first_chunk = chunks.next().unwrap_or("");
-        RopeGraphemes {
-            text: *slice,
-            chunks,
-            cur_chunk: first_chunk,
-            cur_chunk_start: 0,
-            cursor: GraphemeCursor::new(0, slice.len_bytes(), true),
-        }
-    }
-}
-
-impl<'a> Iterator for RopeGraphemes<'a> {
-    type Item = RopeSlice<'a>;
-
-    fn next(&mut self) -> Option<RopeSlice<'a>> {
-        let a = self.cursor.cur_cursor();
-        let b;
-        loop {
-            match self
-                .cursor
-                .next_boundary(self.cur_chunk, self.cur_chunk_start)
-            {
-                Ok(None) => {
-                    return None;
-                }
-                Ok(Some(n)) => {
-                    b = n;
-                    break;
-                }
-                Err(GraphemeIncomplete::NextChunk) => {
-                    self.cur_chunk_start += self.cur_chunk.len();
-                    self.cur_chunk = self.chunks.next().unwrap_or("");
-                }
-                _ => unreachable!(),
-            }
-        }
-
-        if a < self.cur_chunk_start {
-            let a_char = self.text.byte_to_char(a);
-            let b_char = self.text.byte_to_char(b);
-
-            Some(self.text.slice(a_char..b_char))
-        } else {
-            let a2 = a - self.cur_chunk_start;
-            let b2 = b - self.cur_chunk_start;
-            Some((&self.cur_chunk[a2..b2]).into())
-        }
-    }
-}
 /*
 struct GraphemeIterator {
     gc: GraphemeCursor,
@@ -1386,7 +1362,7 @@ mod tests {
             &vec![Selection {
                 start: 3,
                 end: 3,
-                horiz: None,
+                horiz: Some(2),
             }]
         );
     }

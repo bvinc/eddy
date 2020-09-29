@@ -4,13 +4,12 @@
 
 pub mod util;
 
-use ropey::{Rope, RopeSlice};
+use ropey::Rope;
 use std::borrow::Cow;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::{iter, mem, ops, str, usize};
 use tree_sitter::{
-    Language, Node, Parser, Point, Query, QueryCaptures, QueryCursor, QueryError, QueryMatch,
-    Range, Tree,
+    Language, Node, Parser, Query, QueryCaptures, QueryCursor, QueryError, QueryMatch, Range, Tree,
 };
 
 const CANCELLATION_CHECK_INTERVAL: usize = 100;
