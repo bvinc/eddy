@@ -12,7 +12,6 @@ pub trait Layer {
 }
 
 pub fn layer_from_path(path: &Path) -> Box<dyn Layer> {
-    println!("{:?}", path);
     if let Some(ext) = path.extension() {
         if ext == "rs" {
             return Box::new(RustLayer::new());
@@ -33,13 +32,13 @@ impl NilLayer {
 }
 
 impl Layer for NilLayer {
-    fn capture(&self, idx: usize) -> Option<Capture> {
+    fn capture(&self, _idx: usize) -> Option<Capture> {
         None
     }
-    fn capture_from_node(&self, id: usize) -> Option<Capture> {
+    fn capture_from_node(&self, _id: usize) -> Option<Capture> {
         None
     }
-    fn update_highlights(&mut self, rope: &Rope) {}
+    fn update_highlights(&mut self, _rope: &Rope) {}
     fn tree(&self) -> Option<&Tree> {
         None
     }

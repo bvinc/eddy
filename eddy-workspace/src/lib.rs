@@ -1,5 +1,6 @@
 mod buffer;
 pub(crate) mod graphemes;
+mod history;
 mod language;
 mod line_ending;
 mod range;

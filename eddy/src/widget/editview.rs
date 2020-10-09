@@ -671,6 +671,9 @@ impl EditView {
     }
 
     fn handle_drag(&self, state: &mut State, em: &EventMotion) {
+        if em.get_state() != ModifierType::BUTTON1_MASK {
+            return;
+        }
         let view_id = state.model.view_id;
         let mut workspace = state.model.workspace.borrow_mut();
         let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
@@ -715,15 +718,18 @@ impl EditView {
         state.da.queue_draw();
     }
 
-    // fn do_paste_primary(&self, state: &State, view_id: &str, line: u64, col: u64) {
-    //     let view_id2 = view_id.to_string().clone();
-    //     Clipboard::get(&SELECTION_PRIMARY).request_text(move |_, text| {
-    //         if let Some(text) = text {
-    //             core.gesture_point_select(&view_id2, line, col);
-    //             core.insert(&view_id2, text);
-    //         }
-    //     });
-    // }
+    fn do_paste_primary(&self, state: &State, view_id: usize, line: usize, byte_idx: usize) {
+        let view_id = state.model.view_id;
+        let workspace = state.model.workspace.clone();
+        Clipboard::get(&SELECTION_PRIMARY).request_text(move |_, text| {
+            if let Some(text) = text {
+                workspace
+                    .borrow_mut()
+                    .gesture_point_select(view_id, line, byte_idx);
+                workspace.borrow_mut().insert(view_id, text);
+            }
+        });
+    }
 
     fn on_text_change(&self, state: &mut State) {
         let mut workspace = state.model.workspace.borrow_mut();
@@ -785,7 +791,7 @@ impl EditView {
                     }
                 }
                 2 => {
-                    // self.do_paste_primary(&state.model.view_id, line, col);
+                    self.do_paste_primary(state, view_id, line, byte_idx);
                 }
                 _ => {}
             }

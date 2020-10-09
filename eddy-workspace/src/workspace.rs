@@ -167,10 +167,10 @@ impl Workspace {
         self.buffer(view_id).select_all(view_id);
     }
     pub fn undo(&mut self, view_id: ViewId) {
-        self.buffer(view_id).undo();
+        self.buffer(view_id).undo(view_id);
     }
     pub fn redo(&mut self, view_id: ViewId) {
-        self.buffer(view_id).redo();
+        self.buffer(view_id).redo(view_id);
     }
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
@@ -183,6 +183,10 @@ impl Workspace {
         self.buffer(view_id).paste(view_id);
     }
 
+    pub fn gesture_point_select(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+        self.buffer(view_id)
+            .gesture_point_select(view_id, line_idx, line_byte_idx);
+    }
     pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         self.buffer(view_id).drag(view_id, line_idx, line_byte_idx);
     }

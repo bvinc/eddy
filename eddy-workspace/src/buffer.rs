@@ -1,6 +1,7 @@
 use crate::graphemes::{
     next_grapheme_boundary, prev_grapheme_boundary, RopeGraphemes, RopeGraphemesRev,
 };
+use crate::history::History;
 use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
@@ -20,8 +21,10 @@ use std::path::{Path, PathBuf};
 // #[derive(Debug)]
 pub struct Buffer {
     path: Option<PathBuf>,
-    history_ix: usize,
-    history: Vec<Rope>,
+    // history_ix: usize,
+    // history: Vec<Rope>,
+    rope: Rope,
+    history: History,
     selections: HashMap<ViewId, Vec<Selection>>,
     layer: Box<dyn Layer>,
     line_ending: LineEnding,
@@ -31,10 +34,11 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new() -> Self {
+        let rope = Rope::new();
         Self {
             path: None,
-            history_ix: 0,
-            history: vec![Rope::new()],
+            history: History::new(&rope),
+            rope,
             selections: HashMap::new(),
             layer: Box::new(NilLayer::new()),
             line_ending: LineEnding::LF,
@@ -45,16 +49,18 @@ impl Buffer {
     pub fn from_file(path: &Path) -> Result<Self, io::Error> {
         let rope = Rope::from_reader(BufReader::new(File::open(path)?))?;
 
-        Ok(Self {
+        let mut buffer = Buffer {
             path: Some(path.to_owned()),
-            history_ix: 0,
-            history: vec![rope],
+            history: History::new(&rope),
+            rope,
             selections: HashMap::new(),
             layer: language::layer_from_path(path),
             line_ending: LineEnding::LF,
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
-        })
+        };
+        buffer.on_text_change();
+        Ok(buffer)
     }
 
     pub fn init_view(&mut self, view_id: ViewId) {
@@ -68,19 +74,13 @@ impl Buffer {
         );
     }
 
-    /// This is called before changes are made to create a snapshot in the undo
-    /// history.
-    pub fn save_undo(&mut self) {
-        // Save the current state in the history
-        self.history.truncate(self.history_ix + 1);
-        let rope_clone = self.history[self.history_ix].clone();
-        self.history.push(rope_clone);
-        self.history_ix = self.history.len() - 1;
-    }
-
     /// Get selections that are part of a view
     pub fn selections(&self, view_id: ViewId) -> &[Selection] {
         self.selections.get(&view_id).unwrap()
+    }
+
+    pub fn on_text_change(&mut self) {
+        self.layer.update_highlights(&self.rope);
     }
 
     /// Removes a range of text from the buffer
@@ -93,7 +93,7 @@ impl Buffer {
             return;
         }
 
-        let rope = &mut self.history[self.history_ix];
+        let rope = &mut self.rope;
         rope.remove(char_range);
 
         // Update all the selections
@@ -118,14 +118,14 @@ impl Buffer {
             }
         }
 
-        self.layer.update_highlights(rope);
+        self.on_text_change();
     }
 
     /// Insert text into the buffer at a character index
     /// `remove` and `insert_at` are the two base methods that all edits
     /// eventually call.
     pub fn insert_at(&mut self, char_idx: usize, text: &str) {
-        let rope = &mut self.history[self.history_ix];
+        let rope = &mut self.rope;
         let text = self.line_ending.normalize(text);
         rope.insert(char_idx, &text);
         let size = text.chars().count();
@@ -143,7 +143,7 @@ impl Buffer {
 
     /// Insert text at every selection location in a view
     pub fn insert(&mut self, view_id: ViewId, text: &str) {
-        self.save_undo();
+        let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
 
         for i in 0..self.selections.entry(view_id).or_default().len() {
             let sel = self.selections.get(&view_id).unwrap()[i];
@@ -155,8 +155,10 @@ impl Buffer {
             sel.horiz = None;
         }
 
-        let rope = &self.history[self.history_ix].clone();
-        self.layer.update_highlights(rope);
+        let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
+        self.history.new_change(&self.rope, sels_before, sels_after);
+
+        self.on_text_change();
     }
 
     /// Insert a newline at every selection point of a view
@@ -174,13 +176,13 @@ impl Buffer {
     pub fn delete_forward(&mut self, view_id: ViewId) {
         for i in 0..self.selections.entry(view_id).or_default().len() {
             let sel = self.selections.get(&view_id).unwrap()[i];
-            let len_chars = self.history[self.history_ix].len_chars();
+            let len_chars = self.rope.len_chars();
             if sel.is_caret() {
                 if sel.cursor() < len_chars {
                     // Remove the character in front of the cursor
                     self.remove(Range {
                         start: sel.cursor(),
-                        end: next_grapheme_boundary(&self.history[self.history_ix], sel.start),
+                        end: next_grapheme_boundary(&self.rope, sel.start),
                     });
                 }
             } else {
@@ -200,7 +202,7 @@ impl Buffer {
                 if sel.cursor() != 0 {
                     // Remove the character before the cursor
                     self.remove(Range {
-                        start: prev_grapheme_boundary(&self.history[self.history_ix], sel.start),
+                        start: prev_grapheme_boundary(&self.rope, sel.start),
                         end: sel.cursor(),
                     });
                 }
@@ -212,7 +214,7 @@ impl Buffer {
 
     /// Move the cursor to the left, or collapse selection region to the left
     pub fn move_left(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             sel.horiz = None;
@@ -234,7 +236,7 @@ impl Buffer {
 
     /// Move the cursor to the right, or collapse selection region to the right
     pub fn move_right(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         let len_chars = rope.len_chars();
         for sel in self.selections.entry(view_id).or_default() {
@@ -339,7 +341,7 @@ impl Buffer {
 
     /// Move the cursor up
     pub fn move_up(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         for sel in self.selections.entry(view_id).or_default() {
             let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
@@ -350,7 +352,7 @@ impl Buffer {
 
     /// Move the cursor up while modifying the selection region
     pub fn move_up_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         for sel in self.selections.entry(view_id).or_default() {
             let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
@@ -451,7 +453,7 @@ impl Buffer {
 
     /// Move the cursor down
     pub fn move_down(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         for sel in self.selections.entry(view_id).or_default() {
             let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
@@ -462,7 +464,7 @@ impl Buffer {
 
     /// Move the cursor down while modifying the selection region
     pub fn move_down_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         for sel in self.selections.entry(view_id).or_default() {
             let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
@@ -550,7 +552,7 @@ impl Buffer {
 
     /// move the cursor to the left to the next word boundry
     pub fn move_word_left(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let word_right = Self::word_left(rope, sel.end);
@@ -561,7 +563,7 @@ impl Buffer {
     }
     /// move the cursor to the right to the next word boundry
     pub fn move_word_right(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let word_right = Self::word_right(rope, sel.end);
@@ -573,7 +575,7 @@ impl Buffer {
 
     /// Move the cursor left while modifying the selection region
     pub fn move_left_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             if sel.end > 0 {
@@ -585,7 +587,7 @@ impl Buffer {
 
     /// Move the cursor right while modifying the selection region
     pub fn move_right_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let len_chars = rope.len_chars();
 
         for sel in self.selections.entry(view_id).or_default() {
@@ -599,7 +601,7 @@ impl Buffer {
     /// move the cursor to the left to the next word boundry while modifying
     /// the seleciton region
     pub fn move_word_left_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let word_right = Self::word_left(rope, sel.end);
@@ -610,7 +612,7 @@ impl Buffer {
     /// move the cursor to the right to the next word boundry while modifying
     /// the seleciton region
     pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let word_right = Self::word_right(rope, sel.end);
@@ -620,7 +622,7 @@ impl Buffer {
     }
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         for sel in self.selections.entry(view_id).or_default() {
             let line = rope.char_to_line(sel.cursor());
             let line_home = rope.line_to_char(line);
@@ -631,7 +633,7 @@ impl Buffer {
     }
 
     pub fn move_to_right_end_of_line(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         let len_lines = rope.len_lines();
         let end_of_doc = rope.len_chars();
@@ -651,7 +653,7 @@ impl Buffer {
     }
 
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let line = rope.char_to_line(sel.cursor());
@@ -662,7 +664,7 @@ impl Buffer {
     }
 
     pub fn move_to_right_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         let len_lines = rope.len_lines();
         let end_of_doc = rope.len_chars();
@@ -687,7 +689,7 @@ impl Buffer {
     }
 
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let end_of_doc = rope.len_chars();
@@ -696,7 +698,7 @@ impl Buffer {
         }
     }
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let end_of_doc = rope.len_chars();
@@ -704,7 +706,7 @@ impl Buffer {
         }
     }
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
 
         for sel in self.selections.entry(view_id).or_default() {
             let end_of_doc = rope.len_chars();
@@ -738,7 +740,7 @@ impl Buffer {
 
     /// Executed when a user clicks
     pub fn gesture_point_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let line = min(line, rope.len_lines());
         let total_byte_idx = rope.line_to_byte(line) + byte_idx;
         let total_char_idx = rope.byte_to_char(total_byte_idx);
@@ -762,7 +764,7 @@ impl Buffer {
 
     /// Executed when a user shift-clicks
     pub fn gesture_range_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let line = min(line, rope.len_lines());
         let total_byte_idx = rope.line_to_byte(line) + byte_idx;
         let total_char_idx = rope.byte_to_char(total_byte_idx);
@@ -794,7 +796,7 @@ impl Buffer {
     /// Executed when a user ctrl-clicks.  If a selection exists on that point,
     /// remove it.  Otherwise, add a new selection at that point.
     pub fn gesture_toggle_sel(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let line = min(line, rope.len_lines());
         let total_byte_idx = rope.line_to_byte(line) + byte_idx;
         let total_char_idx = rope.byte_to_char(total_byte_idx);
@@ -833,11 +835,101 @@ impl Buffer {
     }
 
     /// Executed when a user double-clicks
-    pub fn gesture_word_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {}
+    pub fn gesture_word_select(&mut self, view_id: ViewId, line: usize, byte_idx: usize) {
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+        enum CharClass {
+            Space,
+            Letter,
+            Symbol,
+        }
+        use CharClass::*;
+        impl CharClass {
+            fn from_rope(slice: RopeSlice) -> Self {
+                if slice.len_chars() == 1 {
+                    let c = slice.char(0);
+                    if c.is_whitespace() {
+                        return Space;
+                    }
+                    if c.is_alphanumeric() || c == '_' {
+                        return Letter;
+                    }
+                }
+                Symbol
+            }
+        }
+
+        let rope = &self.rope;
+        let line = min(line, rope.len_lines());
+        let total_byte_idx = rope.line_to_byte(line) + byte_idx;
+        let char_idx = rope.byte_to_char(total_byte_idx);
+
+        let mut left_iter = RopeGraphemesRev::new(&rope.slice(0..char_idx));
+        let mut right_iter = RopeGraphemes::new(&rope.slice(char_idx..rope.len_chars()));
+
+        let left_char = left_iter
+            .next()
+            .map(|s| CharClass::from_rope(s))
+            .unwrap_or(CharClass::Space);
+        let right_char = right_iter
+            .next()
+            .map(|s| CharClass::from_rope(s))
+            .unwrap_or(CharClass::Space);
+
+        let mut word_class = Symbol;
+        if left_char == Space || right_char == Space {
+            word_class = Space;
+        }
+        if left_char == Letter || right_char == Letter {
+            word_class = Letter;
+        }
+
+        let left_char_idx: usize = char_idx
+            - RopeGraphemesRev::new(&rope.slice(0..char_idx))
+                .take_while(|s| CharClass::from_rope(*s) == word_class)
+                .map(|s| s.len_chars())
+                .sum::<usize>();
+        let right_char_idx: usize = char_idx
+            + RopeGraphemes::new(&rope.slice(char_idx..rope.len_chars()))
+                .take_while(|s| CharClass::from_rope(*s) == word_class)
+                .map(|s| s.len_chars())
+                .sum::<usize>();
+
+        let sel = Selection {
+            start: left_char_idx,
+            end: right_char_idx,
+            horiz: None,
+        };
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Occupied(ref mut e) => {
+                e.get_mut().clear();
+                e.get_mut().push(sel);
+            }
+            Entry::Vacant(e) => {
+                e.insert(vec![sel]);
+            }
+        }
+
+        // for g in RopeGraphemes::new(&rope.slice(char_idx..rope.len_chars())) {
+        //     if x_diff <= horiz {
+        //         left_cand = (final_char, x_diff);
+        //     } else {
+        //         right_cand = Some((final_char, x_diff));
+        //         break;
+        //     }
+
+        //     if g.len_bytes() == 1 && g.char(0) == '\t' {
+        //         x_diff += ((x_diff / tab_size) + 1) * tab_size;
+        //     } else {
+        //         x_diff += 1
+        //     }
+        //     final_char += g.len_chars();
+        // }
+    }
 
     /// Executed when a user triple-clicks
     pub fn gesture_line_select(&mut self, view_id: ViewId, line: usize) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let line = min(line, rope.len_lines());
         let line_char_idx = rope.line_to_char(line);
         let line_end_char_idx = {
@@ -865,30 +957,67 @@ impl Buffer {
     }
 
     pub fn select_all(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let len_chars = rope.len_chars();
         let mut sel = Selection::new();
         sel.start = 0;
         sel.end = len_chars;
         self.selections.insert(view_id, vec![sel]);
     }
-    pub fn undo(&mut self) {
-        if self.history_ix <= 0 {
-            return;
+
+    pub fn replace_selections(&mut self, view_id: ViewId, sels: &[Selection]) {
+        use std::collections::hash_map::Entry;
+        match self.selections.entry(view_id) {
+            Entry::Occupied(ref mut e) => {
+                e.get_mut().clear();
+                e.get_mut().extend_from_slice(sels);
+            }
+            Entry::Vacant(e) => {
+                let mut v = Vec::new();
+                v.extend_from_slice(sels);
+                e.insert(v);
+            }
         }
-
-        self.history_ix -= 1;
-
-        self.fix_selections();
-        self.layer.update_highlights(&self.history[self.history_ix]);
     }
-    pub fn redo(&mut self) {
-        if self.history_ix < self.history.len() - 1 {
-            self.history_ix += 1;
+    pub fn undo(&mut self, view_id: ViewId) {
+        if let Some((rope, sels)) = self.history.undo() {
+            self.rope = rope;
+            use std::collections::hash_map::Entry;
+            match self.selections.entry(view_id) {
+                Entry::Occupied(ref mut e) => {
+                    e.get_mut().clear();
+                    e.get_mut().extend_from_slice(sels);
+                }
+                Entry::Vacant(e) => {
+                    let mut v = Vec::new();
+                    v.extend_from_slice(sels);
+                    e.insert(v);
+                }
+            }
         }
 
         self.fix_selections();
-        self.layer.update_highlights(&self.history[self.history_ix]);
+        self.on_text_change();
+    }
+    pub fn redo(&mut self, view_id: ViewId) {
+        if let Some((rope, sels)) = self.history.redo() {
+            self.rope = rope;
+            use std::collections::hash_map::Entry;
+            match self.selections.entry(view_id) {
+                Entry::Occupied(ref mut e) => {
+                    e.get_mut().clear();
+                    e.get_mut().extend_from_slice(sels);
+                }
+                Entry::Vacant(e) => {
+                    let mut v = Vec::new();
+                    v.extend_from_slice(sels);
+                    e.insert(v);
+                }
+            }
+        }
+
+        self.fix_selections();
+        self.on_text_change();
     }
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
         let ret = self.copy(view_id);
@@ -907,7 +1036,7 @@ impl Buffer {
             let sel = self.selections.get(&view_id).unwrap()[i];
             if !sel.is_caret() {
                 // Just remove the selection
-                let rope = &self.history[self.history_ix];
+                let rope = &self.rope;
                 let text: Cow<str> = rope.slice(sel.range()).into();
                 if !ret.is_empty() {
                     ret.push('\n');
@@ -924,7 +1053,7 @@ impl Buffer {
     pub fn paste(&mut self, view_id: ViewId) {}
 
     pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let byte_idx = if line_idx >= rope.len_lines() {
             rope.len_bytes()
         } else {
@@ -943,7 +1072,7 @@ impl Buffer {
     // out of bounds
     // TODO make sure selection regions never intersect, if so, merge them
     pub fn fix_selections(&mut self) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         let len_chars = rope.len_chars();
 
         for (_, sels) in &mut self.selections {
@@ -959,7 +1088,7 @@ impl Buffer {
     }
 
     pub fn check_invariants(&mut self, view_id: ViewId) {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         debug_assert!(self.selections.get(&view_id).unwrap().len() > 0);
         for sel in self.selections.entry(view_id).or_default() {
             dbg!(
@@ -984,39 +1113,38 @@ impl Buffer {
     }
 
     pub fn len_bytes(&self) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.len_bytes()
     }
     pub fn len_chars(&self) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.len_chars()
     }
     pub fn len_lines(&self) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.len_lines()
     }
     pub fn line(&self, line_idx: usize) -> RopeSlice {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.line(line_idx)
     }
     pub fn rope_clone(&self) -> Rope {
-        let rope = &self.history[self.history_ix];
-        rope.clone()
+        self.rope.clone()
     }
     pub fn char_to_line(&self, char_idx: usize) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.char_to_line(char_idx)
     }
     pub fn line_to_char(&self, char_idx: usize) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.line_to_char(char_idx)
     }
     pub fn char_to_byte(&self, char_idx: usize) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.char_to_byte(char_idx)
     }
     pub fn line_to_byte(&self, char_idx: usize) -> usize {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         rope.line_to_byte(char_idx)
     }
 
@@ -1026,7 +1154,7 @@ impl Buffer {
         line_idx: usize,
         theme: &Theme,
     ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
-        let rope = &self.history[self.history_ix];
+        let rope = &self.rope;
         if line_idx >= rope.len_lines() {
             return None;
         }
@@ -1150,7 +1278,7 @@ impl Iterator for GraphemeIterator {
 impl ToString for Buffer {
     #[inline]
     fn to_string(&self) -> String {
-        self.history[self.history_ix].slice(..).into()
+        self.rope.slice(..).into()
     }
 }
 
