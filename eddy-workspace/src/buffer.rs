@@ -30,6 +30,7 @@ pub struct Buffer {
     line_ending: LineEnding,
     tab_mode: TabMode,
     tab_size: usize,
+    on_text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
 }
 
 impl Buffer {
@@ -44,6 +45,7 @@ impl Buffer {
             line_ending: LineEnding::LF,
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
+            on_text_change_cbs: Vec::new(),
         }
     }
     pub fn from_file(path: &Path) -> Result<Self, io::Error> {
@@ -58,6 +60,7 @@ impl Buffer {
             line_ending: LineEnding::LF,
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
+            on_text_change_cbs: Vec::new(),
         };
         buffer.on_text_change();
         Ok(buffer)
@@ -79,8 +82,25 @@ impl Buffer {
         self.selections.get(&view_id).unwrap()
     }
 
-    pub fn on_text_change(&mut self) {
+    /// Subscribe to buffer updates.  Whenever this buffer changes, call `cb`.
+    pub fn sub_to_update<F: Fn() + 'static>(&mut self, cb: F) {
+        self.on_text_change_cbs.push(Box::new(cb))
+    }
+
+    fn on_text_change(&mut self) {
         self.layer.update_highlights(&self.rope);
+
+        // Call the change callbacks
+        for cb in &self.on_text_change_cbs {
+            cb()
+        }
+    }
+
+    fn on_selection_change(&mut self) {
+        // Call the change callbacks
+        for cb in &self.on_text_change_cbs {
+            cb()
+        }
     }
 
     /// Removes a range of text from the buffer
@@ -232,6 +252,8 @@ impl Buffer {
                 sel.end = left;
             }
         }
+
+        self.on_selection_change();
     }
 
     /// Move the cursor to the right, or collapse selection region to the right
@@ -255,6 +277,8 @@ impl Buffer {
                 sel.end = right;
             }
         }
+
+        self.on_selection_change();
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -348,6 +372,8 @@ impl Buffer {
             sel.start = final_char;
             sel.end = final_char;
         }
+
+        self.on_selection_change();
     }
 
     /// Move the cursor up while modifying the selection region
@@ -358,6 +384,8 @@ impl Buffer {
             sel.horiz = horiz;
             sel.end = final_char;
         }
+
+        self.on_selection_change();
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -460,6 +488,8 @@ impl Buffer {
             sel.start = final_char;
             sel.end = final_char;
         }
+
+        self.on_selection_change();
     }
 
     /// Move the cursor down while modifying the selection region
@@ -470,6 +500,8 @@ impl Buffer {
             sel.horiz = horiz;
             sel.end = final_char;
         }
+
+        self.on_selection_change();
     }
 
     /// Given a character location, return a new character location to the next
@@ -560,6 +592,8 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
     /// move the cursor to the right to the next word boundry
     pub fn move_word_right(&mut self, view_id: ViewId) {
@@ -571,6 +605,8 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     /// Move the cursor left while modifying the selection region
@@ -583,6 +619,8 @@ impl Buffer {
                 sel.end = left;
             }
         }
+
+        self.on_selection_change();
     }
 
     /// Move the cursor right while modifying the selection region
@@ -596,6 +634,8 @@ impl Buffer {
                 sel.end = right;
             }
         }
+
+        self.on_selection_change();
     }
 
     /// move the cursor to the left to the next word boundry while modifying
@@ -608,6 +648,8 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
     /// move the cursor to the right to the next word boundry while modifying
     /// the seleciton region
@@ -619,6 +661,8 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
@@ -630,6 +674,8 @@ impl Buffer {
             sel.end = line_home;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_right_end_of_line(&mut self, view_id: ViewId) {
@@ -650,6 +696,8 @@ impl Buffer {
             sel.end = line_end;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -661,6 +709,8 @@ impl Buffer {
             sel.end = line_home;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_right_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -679,6 +729,8 @@ impl Buffer {
             sel.end = line_end;
             sel.horiz = None;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_beginning_of_document(&mut self, view_id: ViewId) {
@@ -686,6 +738,8 @@ impl Buffer {
             sel.start = 0;
             sel.end = 0;
         }
+
+        self.on_selection_change();
     }
 
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
@@ -696,7 +750,10 @@ impl Buffer {
             sel.start = end_of_doc;
             sel.end = end_of_doc;
         }
+
+        self.on_selection_change();
     }
+
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
@@ -704,7 +761,10 @@ impl Buffer {
             let end_of_doc = rope.len_chars();
             sel.end = end_of_doc;
         }
+
+        self.on_selection_change();
     }
+
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
@@ -712,30 +772,44 @@ impl Buffer {
             let end_of_doc = rope.len_chars();
             sel.end = end_of_doc;
         }
+
+        self.on_selection_change();
     }
+
     pub fn page_down(&mut self, view_id: ViewId) {
         // TODO base on visible lines
         for _ in 0..10 {
             self.move_down(view_id);
         }
+
+        self.on_selection_change();
     }
+
     pub fn page_up(&mut self, view_id: ViewId) {
         // TODO base on visible lines
         for _ in 0..10 {
             self.move_up(view_id);
         }
+
+        self.on_selection_change();
     }
+
     pub fn page_up_and_modify_selection(&mut self, view_id: ViewId) {
         // TODO base on visible lines
         for _ in 0..10 {
             self.move_up_and_modify_selection(view_id);
         }
+
+        self.on_selection_change();
     }
+
     pub fn page_down_and_modify_selection(&mut self, view_id: ViewId) {
         // TODO base on visible lines
         for _ in 0..10 {
             self.move_down_and_modify_selection(view_id);
         }
+
+        self.on_selection_change();
     }
 
     /// Executed when a user clicks
@@ -760,6 +834,8 @@ impl Buffer {
                 e.insert(vec![sel]);
             }
         }
+
+        self.on_selection_change();
     }
 
     /// Executed when a user shift-clicks
@@ -791,6 +867,8 @@ impl Buffer {
                 e.insert(vec![sel]);
             }
         }
+
+        self.on_selection_change();
     }
 
     /// Executed when a user ctrl-clicks.  If a selection exists on that point,
@@ -832,6 +910,8 @@ impl Buffer {
                 }
             }
         };
+
+        self.on_selection_change();
     }
 
     /// Executed when a user double-clicks
@@ -910,21 +990,7 @@ impl Buffer {
             }
         }
 
-        // for g in RopeGraphemes::new(&rope.slice(char_idx..rope.len_chars())) {
-        //     if x_diff <= horiz {
-        //         left_cand = (final_char, x_diff);
-        //     } else {
-        //         right_cand = Some((final_char, x_diff));
-        //         break;
-        //     }
-
-        //     if g.len_bytes() == 1 && g.char(0) == '\t' {
-        //         x_diff += ((x_diff / tab_size) + 1) * tab_size;
-        //     } else {
-        //         x_diff += 1
-        //     }
-        //     final_char += g.len_chars();
-        // }
+        self.on_selection_change();
     }
 
     /// Executed when a user triple-clicks
@@ -954,6 +1020,8 @@ impl Buffer {
                 e.insert(vec![sel]);
             }
         }
+
+        self.on_selection_change();
     }
 
     pub fn select_all(&mut self, view_id: ViewId) {
@@ -963,6 +1031,8 @@ impl Buffer {
         sel.start = 0;
         sel.end = len_chars;
         self.selections.insert(view_id, vec![sel]);
+
+        self.on_selection_change();
     }
 
     pub fn replace_selections(&mut self, view_id: ViewId, sels: &[Selection]) {
@@ -978,7 +1048,10 @@ impl Buffer {
                 e.insert(v);
             }
         }
+
+        self.on_selection_change();
     }
+
     pub fn undo(&mut self, view_id: ViewId) {
         if let Some((rope, sels)) = self.history.undo() {
             self.rope = rope;
@@ -1019,6 +1092,7 @@ impl Buffer {
         self.fix_selections();
         self.on_text_change();
     }
+
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
         let ret = self.copy(view_id);
         for i in 0..self.selections.entry(view_id).or_default().len() {
@@ -1030,6 +1104,7 @@ impl Buffer {
         }
         ret
     }
+
     pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
         let mut ret = String::new();
         for i in 0..self.selections.entry(view_id).or_default().len() {
@@ -1050,6 +1125,7 @@ impl Buffer {
             Some(ret)
         }
     }
+
     pub fn paste(&mut self, view_id: ViewId) {}
 
     pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
@@ -1066,6 +1142,8 @@ impl Buffer {
             // sel.start = dbg!(rope.byte_to_char(byte_idx));
             sel.end = dbg!(rope.byte_to_char(byte_idx));
         }
+
+        self.on_selection_change();
     }
 
     // currently the only thing this does is ensure that all selections are not

@@ -445,34 +445,6 @@ impl Win {
         }
     }
 
-    pub fn handle_update(&mut self, params: &Value) {
-        trace!("handling update {:?}", params);
-
-        let view_id = {
-            let view_id = params["view_id"].as_str();
-            if view_id.is_none() {
-                return;
-            }
-            view_id.unwrap().to_string()
-        };
-        let pristine = {
-            let pristine = params["update"]["pristine"].as_bool();
-            pristine.unwrap_or(false)
-        };
-
-        if let Some(&ix) = self.view_to_page.get(&view_id) {
-            self.pages[ix as usize]
-                .page
-                .emit(editview::Msg::Update(params.clone()));
-            if pristine != self.pages[ix as usize].pristine {
-                self.pages[ix as usize].pristine = pristine;
-                self.pages[ix as usize]
-                    .tab
-                    .emit(tab::Msg::Pristine(pristine));
-            }
-        }
-    }
-
     pub fn scroll_to(&mut self, params: &Value) {
         trace!("handling scroll_to {:?}", params);
         let view_id = {

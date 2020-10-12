@@ -55,7 +55,7 @@ pub enum Msg {
     ScrollTo(u64, u64),
     SearchChanged(Option<String>),
     StopSearch,
-    Update(Value),
+    Update,
 }
 
 struct State {
@@ -134,7 +134,7 @@ impl Update for EditView {
             // Msg::StopSearch => self.stop_search(&mut state),
             // Msg::Replace => self.replace(&mut state),
             // Msg::ReplaceAll => self.replace_all(&mut state),
-            // Msg::Update(params) => self.handle_update(&mut state, &params),
+            Msg::Update => self.on_text_change(&mut state),
             _ => {}
         }
     }
@@ -402,6 +402,16 @@ impl Widget for EditView {
             Inhibit(false)
         }));
 
+        // Subscribe to buffer change events.  Add a callback to queue drawing
+        // on our drawing areas.
+        {
+            let state_ref = state.borrow();
+            let mut workspace = state_ref.model.workspace.borrow_mut();
+            let buffer = workspace.buffer(state_ref.model.view_id);
+            let stream = relm.stream().clone();
+            buffer.sub_to_update(move || stream.emit(Msg::Update));
+        }
+
         EditView { state }
     }
 }
@@ -602,8 +612,6 @@ impl EditView {
                 }
             }
         };
-
-        self.on_text_change(state);
     }
 
     fn da_size_allocate(&self, state: &mut State, da_width: i32, da_height: i32) {
@@ -796,8 +804,6 @@ impl EditView {
                 _ => {}
             }
         }
-
-        self.on_text_change(state);
     }
 
     fn da_px_to_line_byte_idx(
