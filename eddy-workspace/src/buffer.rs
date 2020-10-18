@@ -1199,8 +1199,7 @@ impl Buffer {
             )
         };
         for sel in self.selections.entry(view_id).or_default() {
-            // sel.start = dbg!(rope.byte_to_char(byte_idx));
-            sel.end = dbg!(rope.byte_to_char(byte_idx));
+            sel.end = rope.byte_to_char(byte_idx);
         }
 
         self.on_selection_change();
@@ -1230,14 +1229,14 @@ impl Buffer {
         let rope = &self.rope;
         debug_assert!(self.selections.get(&view_id).unwrap().len() > 0);
         for sel in self.selections.entry(view_id).or_default() {
-            dbg!(
-                rope,
-                sel.start,
-                rope.len_chars(),
-                prev_grapheme_boundary(rope, sel.start),
-                next_grapheme_boundary(rope, sel.start),
-                prev_grapheme_boundary(rope, next_grapheme_boundary(rope, sel.start))
-            );
+            // dbg!(
+            //     rope,
+            //     sel.start,
+            //     rope.len_chars(),
+            //     prev_grapheme_boundary(rope, sel.start),
+            //     next_grapheme_boundary(rope, sel.start),
+            //     prev_grapheme_boundary(rope, next_grapheme_boundary(rope, sel.start))
+            // );
             debug_assert!(
                 sel.start == rope.len_chars()
                     || sel.start

@@ -425,7 +425,15 @@ impl Widget for EditView {
             });
         }
 
-        EditView { state }
+        let ev = EditView { state };
+
+        // do a bunch of initialization that happens when text changes
+        {
+            let mut state = ev.state.borrow_mut();
+            ev.on_text_change(&mut *state);
+        }
+
+        ev
     }
 }
 
@@ -633,10 +641,12 @@ impl EditView {
         let hadj = state.hadj.clone();
         hadj.set_page_size(f64::from(da_width));
 
+        // self.on_text_change(state);
+
         // self.update_visible_scroll_region(state);
     }
 
-    fn handle_scroll(&self, state: &mut State, _es: &EventScroll) {
+    fn handle_scroll(&self, _state: &mut State, _es: &EventScroll) {
         // // self.da.grab_focus();
         // // // let amt = self.font_height * 3.0;
 
@@ -770,7 +780,6 @@ impl EditView {
 
         let (x, y) = em.get_position();
         let (line, byte_idx) = { Self::da_px_to_line_byte_idx(state, buffer, text_theme, x, y) };
-        dbg!(line, byte_idx);
 
         workspace.drag(view_id, line, byte_idx);
 
