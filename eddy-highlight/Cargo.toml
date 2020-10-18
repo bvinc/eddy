@@ -8,6 +8,6 @@ edition = "2018"
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-regex = "1"
+regex = "1.4"
 ropey = "1.2"
 tree-sitter = "0.17"

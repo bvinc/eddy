@@ -52,7 +52,8 @@ pub enum Msg {
     ReplaceAll,
     SizeAllocate(i32, i32),
     ScrollEvent(EventScroll),
-    ScrollTo(u64, u64),
+    ScrollTo(usize, usize),
+    ScrollToSelections,
     SearchChanged(Option<String>),
     StopSearch,
     Update,
@@ -129,6 +130,7 @@ impl Update for EditView {
             Msg::MotionNotify(em) => self.handle_drag(&mut state, &em),
             Msg::ScrollEvent(es) => self.handle_scroll(&mut state, &es),
             Msg::ScrollTo(line, col) => self.scroll_to(&mut state, line, col),
+            Msg::ScrollToSelections => self.scroll_to_selections(&mut state),
             Msg::SizeAllocate(w, h) => self.da_size_allocate(&mut state, w, h),
             // Msg::SearchChanged(s) => self.search_changed(&mut state, s),
             // Msg::StopSearch => self.stop_search(&mut state),
@@ -154,6 +156,7 @@ impl Widget for EditView {
     }
 
     fn view(relm: &Relm<Self>, model: Self::Model) -> Self {
+        let view_id = model.view_id;
         let da = ScrollableDrawingArea::new();
         let line_da = ScrollableDrawingArea::new();
         line_da.set_size_request(100, 100);
@@ -409,7 +412,17 @@ impl Widget for EditView {
             let mut workspace = state_ref.model.workspace.borrow_mut();
             let buffer = workspace.buffer(state_ref.model.view_id);
             let stream = relm.stream().clone();
-            buffer.sub_to_update(move || stream.emit(Msg::Update));
+            buffer.connect_update(move || stream.emit(Msg::Update));
+        }
+
+        {
+            let state_ref = state.borrow();
+            let mut workspace = state_ref.model.workspace.borrow_mut();
+            let buffer = workspace.buffer(state_ref.model.view_id);
+            let stream = relm.stream().clone();
+            buffer.connect_scroll_to_selections(view_id, move || {
+                stream.emit(Msg::ScrollToSelections)
+            });
         }
 
         EditView { state }
@@ -615,7 +628,6 @@ impl EditView {
     }
 
     fn da_size_allocate(&self, state: &mut State, da_width: i32, da_height: i32) {
-        // debug!("DA SIZE ALLOCATE");
         let vadj = state.vadj.clone();
         vadj.set_page_size(f64::from(da_height));
         let hadj = state.hadj.clone();
@@ -647,7 +659,7 @@ impl EditView {
         // self.update_visible_scroll_region(state);
     }
 
-    fn scroll_to(&self, state: &mut State, line: u64, col: u64) {
+    fn scroll_to(&self, state: &mut State, line: usize, col: usize) {
         let cur_top = state.font_height * ((line + 1) as f64) - state.font_ascent;
         let cur_bottom = cur_top + state.font_ascent + state.font_descent;
         let vadj = state.vadj.clone();
@@ -676,6 +688,76 @@ impl EditView {
         }
 
         // self.update_visible_scroll_region(state);
+    }
+
+    fn scroll_to_selections(&self, state: &mut State) {
+        let view_id = state.model.view_id;
+        let mut workspace = state.model.workspace.borrow_mut();
+        let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
+
+        let mut min_line = None;
+        let mut max_line = None;
+
+        let mut min_x_pos = None;
+        let mut max_x_pos = None;
+
+        let sels = buffer.selections(view_id);
+        for sel in sels {
+            // let start_line = buffer.char_to_line(sel.start);
+            // min_line = Some(min_line.map_or(start_line, |y| min(y, start_line)));
+            // max_line = Some(max_line.map_or(start_line, |y| max(y, start_line)));
+            let end_line = buffer.char_to_line(sel.end);
+            min_line = Some(min_line.map_or(end_line, |y| min(y, end_line)));
+            max_line = Some(max_line.map_or(end_line, |y| max(y, end_line)));
+
+            let end_line_byte = buffer.char_to_byte(sel.end) - buffer.line_to_byte(end_line);
+
+            // let line_num = (y / state.font_height) as usize;
+            if let Some((line, _)) =
+                buffer.get_line_with_attributes(state.model.view_id, end_line, &text_theme)
+            {
+                let pango_ctx = state.da.get_pango_context();
+
+                let layout = create_layout_for_line(state, &pango_ctx, &line, &[]);
+                let (_, x_pos) = layout.index_to_line_x(end_line_byte as i32, false);
+                let x_pos = x_pos / pango::SCALE;
+                min_x_pos = Some(min_x_pos.map_or(x_pos, |y| min(y, x_pos)));
+                max_x_pos = Some(max_x_pos.map_or(x_pos, |y| max(y, x_pos)));
+            }
+        }
+
+        if min_line.is_none() || max_line.is_none() || min_x_pos.is_none() || max_x_pos.is_none() {
+            return;
+        }
+
+        let min_line = min_line.unwrap();
+        let max_line = max_line.unwrap();
+        let min_x_pos = min_x_pos.unwrap();
+        let max_x_pos = max_x_pos.unwrap();
+
+        let top = state.font_height * ((min_line + 1) as f64) - state.font_ascent;
+        let bottom = state.font_height * ((max_line + 1) as f64) + state.font_height;
+        let vadj = state.vadj.clone();
+
+        let left = (min_x_pos as f64) - state.font_width;
+        let right = (max_x_pos as f64) + state.font_width * 2.0;
+        let hadj = state.hadj.clone();
+
+        if top < vadj.get_value() {
+            vadj.set_value(top);
+        } else if bottom > vadj.get_value() + vadj.get_page_size() && vadj.get_page_size() != 0.0 {
+            vadj.set_value(bottom - vadj.get_page_size());
+        }
+
+        if left < hadj.get_value() {
+            hadj.set_value(left);
+        } else if right > hadj.get_value() + hadj.get_page_size() && hadj.get_page_size() != 0.0 {
+            let new_value = right - hadj.get_page_size();
+            if new_value + hadj.get_page_size() > hadj.get_upper() {
+                hadj.set_upper(new_value + hadj.get_page_size());
+            }
+            hadj.set_value(new_value);
+        }
     }
 
     fn handle_drag(&self, state: &mut State, em: &EventMotion) {
@@ -760,6 +842,8 @@ impl EditView {
         // update scrollbars to the new text width and height
         state.vadj.set_lower(0f64);
         state.vadj.set_upper(text_height as f64);
+
+        // If the last line was removed, scroll up so we're not overscrolled
         if vadj.get_value() + vadj.get_page_size() > vadj.get_upper() {
             vadj.set_value(vadj.get_upper() - vadj.get_page_size())
         }
@@ -774,35 +858,32 @@ impl EditView {
     }
 
     fn handle_button_press(&self, state: &mut State, eb: &EventButton) {
-        {
-            let view_id = state.model.view_id;
-            let mut workspace = state.model.workspace.borrow_mut();
-            let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
-            state.da.grab_focus();
+        let view_id = state.model.view_id;
+        let mut workspace = state.model.workspace.borrow_mut();
+        let (buffer, text_theme) = workspace.buffer_and_theme(state.model.view_id);
+        state.da.grab_focus();
 
-            let (x, y) = eb.get_position();
-            let (line, byte_idx) =
-                { Self::da_px_to_line_byte_idx(state, buffer, text_theme, x, y) };
+        let (x, y) = eb.get_position();
+        let (line, byte_idx) = { Self::da_px_to_line_byte_idx(state, buffer, text_theme, x, y) };
 
-            match eb.get_button() {
-                1 => {
-                    if eb.get_state().contains(ModifierType::SHIFT_MASK) {
-                        buffer.gesture_range_select(view_id, line, byte_idx);
-                    } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
-                        buffer.gesture_toggle_sel(view_id, line, byte_idx);
-                    } else if eb.get_event_type() == EventType::DoubleButtonPress {
-                        buffer.gesture_word_select(view_id, line, byte_idx);
-                    } else if eb.get_event_type() == EventType::TripleButtonPress {
-                        buffer.gesture_line_select(view_id, line);
-                    } else {
-                        buffer.gesture_point_select(view_id, line, byte_idx);
-                    }
+        match eb.get_button() {
+            1 => {
+                if eb.get_state().contains(ModifierType::SHIFT_MASK) {
+                    buffer.gesture_range_select(view_id, line, byte_idx);
+                } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
+                    buffer.gesture_toggle_sel(view_id, line, byte_idx);
+                } else if eb.get_event_type() == EventType::DoubleButtonPress {
+                    buffer.gesture_word_select(view_id, line, byte_idx);
+                } else if eb.get_event_type() == EventType::TripleButtonPress {
+                    buffer.gesture_line_select(view_id, line);
+                } else {
+                    buffer.gesture_point_select(view_id, line, byte_idx);
                 }
-                2 => {
-                    self.do_paste_primary(state, view_id, line, byte_idx);
-                }
-                _ => {}
             }
+            2 => {
+                self.do_paste_primary(state, view_id, line, byte_idx);
+            }
+            _ => {}
         }
     }
 

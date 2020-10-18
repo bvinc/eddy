@@ -444,37 +444,6 @@ impl Win {
             }
         }
     }
-
-    pub fn scroll_to(&mut self, params: &Value) {
-        trace!("handling scroll_to {:?}", params);
-        let view_id = {
-            let view_id = params["view_id"].as_str();
-            if view_id.is_none() {
-                return;
-            }
-            view_id.unwrap().to_string()
-        };
-
-        let line = {
-            match params["line"].as_u64() {
-                None => return,
-                Some(line) => line,
-            }
-        };
-
-        let col = {
-            match params["col"].as_u64() {
-                None => return,
-                Some(col) => col,
-            }
-        };
-
-        if let Some(&page) = self.view_to_page.get(&view_id) {
-            self.pages[page as usize]
-                .page
-                .emit(editview::Msg::ScrollTo(line, col));
-        }
-    }
 }
 
 fn main() {

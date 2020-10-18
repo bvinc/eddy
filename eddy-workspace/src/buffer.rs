@@ -30,7 +30,8 @@ pub struct Buffer {
     line_ending: LineEnding,
     tab_mode: TabMode,
     tab_size: usize,
-    on_text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
+    text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
+    scroll_to_selections_cbs: HashMap<ViewId, Vec<Box<dyn Fn() + 'static>>>,
 }
 
 impl Buffer {
@@ -45,7 +46,8 @@ impl Buffer {
             line_ending: LineEnding::LF,
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
-            on_text_change_cbs: Vec::new(),
+            text_change_cbs: Vec::new(),
+            scroll_to_selections_cbs: HashMap::new(),
         }
     }
     pub fn from_file(path: &Path) -> Result<Self, io::Error> {
@@ -60,7 +62,8 @@ impl Buffer {
             line_ending: LineEnding::LF,
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
-            on_text_change_cbs: Vec::new(),
+            text_change_cbs: Vec::new(),
+            scroll_to_selections_cbs: HashMap::new(),
         };
         buffer.on_text_change();
         Ok(buffer)
@@ -83,22 +86,40 @@ impl Buffer {
     }
 
     /// Subscribe to buffer updates.  Whenever this buffer changes, call `cb`.
-    pub fn sub_to_update<F: Fn() + 'static>(&mut self, cb: F) {
-        self.on_text_change_cbs.push(Box::new(cb))
+    pub fn connect_update<F: Fn() + 'static>(&mut self, cb: F) {
+        self.text_change_cbs.push(Box::new(cb))
+    }
+
+    pub fn connect_scroll_to_selections<F: Fn() + 'static>(&mut self, view_id: ViewId, cb: F) {
+        self.scroll_to_selections_cbs
+            .entry(view_id)
+            .or_insert(Vec::new())
+            .push(Box::new(cb))
+    }
+
+    fn scroll_to_selections(&mut self, view_id: ViewId) {
+        // Call the callbacks
+        for cb in self
+            .scroll_to_selections_cbs
+            .get(&view_id)
+            .unwrap_or(&Vec::new())
+        {
+            cb()
+        }
     }
 
     fn on_text_change(&mut self) {
         self.layer.update_highlights(&self.rope);
 
         // Call the change callbacks
-        for cb in &self.on_text_change_cbs {
+        for cb in &self.text_change_cbs {
             cb()
         }
     }
 
     fn on_selection_change(&mut self) {
         // Call the change callbacks
-        for cb in &self.on_text_change_cbs {
+        for cb in &self.text_change_cbs {
             cb()
         }
     }
@@ -137,8 +158,6 @@ impl Buffer {
                 }
             }
         }
-
-        self.on_text_change();
     }
 
     /// Insert text into the buffer at a character index
@@ -179,6 +198,7 @@ impl Buffer {
         self.history.new_change(&self.rope, sels_before, sels_after);
 
         self.on_text_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Insert a newline at every selection point of a view
@@ -210,6 +230,9 @@ impl Buffer {
                 self.remove(sel.range());
             }
         }
+
+        self.on_text_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Delete the character before the cursor, or the highlighted region.  This
@@ -230,6 +253,9 @@ impl Buffer {
                 self.remove(sel.range());
             }
         }
+
+        self.on_text_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor to the left, or collapse selection region to the left
@@ -254,6 +280,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor to the right, or collapse selection region to the right
@@ -279,6 +306,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -374,6 +402,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor up while modifying the selection region
@@ -386,6 +415,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -490,6 +520,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor down while modifying the selection region
@@ -502,6 +533,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, return a new character location to the next
@@ -594,6 +626,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
     /// move the cursor to the right to the next word boundry
     pub fn move_word_right(&mut self, view_id: ViewId) {
@@ -607,6 +640,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor left while modifying the selection region
@@ -636,6 +670,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// move the cursor to the left to the next word boundry while modifying
@@ -650,7 +685,9 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
+
     /// move the cursor to the right to the next word boundry while modifying
     /// the seleciton region
     pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {
@@ -663,6 +700,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
@@ -676,6 +714,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_right_end_of_line(&mut self, view_id: ViewId) {
@@ -698,6 +737,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -711,6 +751,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_right_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -731,6 +772,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_beginning_of_document(&mut self, view_id: ViewId) {
@@ -740,6 +782,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
@@ -752,6 +795,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
@@ -763,6 +807,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
@@ -774,6 +819,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn page_down(&mut self, view_id: ViewId) {
@@ -783,6 +829,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn page_up(&mut self, view_id: ViewId) {
@@ -792,6 +839,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn page_up_and_modify_selection(&mut self, view_id: ViewId) {
@@ -801,6 +849,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn page_down_and_modify_selection(&mut self, view_id: ViewId) {
@@ -810,6 +859,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user clicks
@@ -836,6 +886,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user shift-clicks
@@ -869,6 +920,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user ctrl-clicks.  If a selection exists on that point,
@@ -912,6 +964,7 @@ impl Buffer {
         };
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user double-clicks
@@ -991,6 +1044,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user triple-clicks
@@ -1022,6 +1076,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn select_all(&mut self, view_id: ViewId) {
@@ -1033,6 +1088,7 @@ impl Buffer {
         self.selections.insert(view_id, vec![sel]);
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn replace_selections(&mut self, view_id: ViewId, sels: &[Selection]) {
@@ -1050,6 +1106,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn undo(&mut self, view_id: ViewId) {
@@ -1071,7 +1128,9 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
+        self.scroll_to_selections(view_id);
     }
+
     pub fn redo(&mut self, view_id: ViewId) {
         if let Some((rope, sels)) = self.history.redo() {
             self.rope = rope;
@@ -1091,6 +1150,7 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
+        self.scroll_to_selections(view_id);
     }
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
@@ -1144,6 +1204,7 @@ impl Buffer {
         }
 
         self.on_selection_change();
+        self.scroll_to_selections(view_id);
     }
 
     // currently the only thing this does is ensure that all selections are not
