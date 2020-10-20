@@ -214,6 +214,8 @@ impl Buffer {
     /// Delete the character after the cursor, or the highlighted region.  This
     /// is normally what happens when the delete key is pressed.
     pub fn delete_forward(&mut self, view_id: ViewId) {
+        let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
+
         for i in 0..self.selections.entry(view_id).or_default().len() {
             let sel = self.selections.get(&view_id).unwrap()[i];
             let len_chars = self.rope.len_chars();
@@ -231,6 +233,9 @@ impl Buffer {
             }
         }
 
+        let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
+        self.history.new_change(&self.rope, sels_before, sels_after);
+
         self.on_text_change();
         self.scroll_to_selections(view_id);
     }
@@ -238,6 +243,8 @@ impl Buffer {
     /// Delete the character before the cursor, or the highlighted region.  This
     /// is normally what happens when the backspace key is pressed.
     pub fn delete_backward(&mut self, view_id: ViewId) {
+        let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
+
         // Delete all selection regions
         for i in 0..self.selections.entry(view_id).or_default().len() {
             let sel = self.selections.get(&view_id).unwrap()[i];
@@ -253,6 +260,9 @@ impl Buffer {
                 self.remove(sel.range());
             }
         }
+
+        let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
+        self.history.new_change(&self.rope, sels_before, sels_after);
 
         self.on_text_change();
         self.scroll_to_selections(view_id);
