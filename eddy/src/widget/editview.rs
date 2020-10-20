@@ -640,10 +640,6 @@ impl EditView {
         vadj.set_page_size(f64::from(da_height));
         let hadj = state.hadj.clone();
         hadj.set_page_size(f64::from(da_width));
-
-        // self.on_text_change(state);
-
-        // self.update_visible_scroll_region(state);
     }
 
     fn handle_scroll(&self, _state: &mut State, _es: &EventScroll) {
@@ -938,11 +934,20 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
     let num_lines = buffer.len_lines();
 
     let vadj = state.vadj.clone();
-    // let hadj = self.hadj.clone();
-    trace!("drawing.  vadj={}, {}", vadj.get_value(), vadj.get_upper());
+    // We round the values from the scrollbars, because if we don't, rectangles
+    // will be antialiased and lines will show up inbetween highlighted lines
+    // of text.
+    let vadj_value = f64::round(vadj.get_value());
 
-    let first_line = (vadj.get_value() / state.font_height) as usize;
-    let last_line = ((vadj.get_value() + f64::from(da_height)) / state.font_height) as usize + 1;
+    trace!(
+        "drawing.  vadj={} ({}) upper={}",
+        vadj.get_value(),
+        vadj_value,
+        vadj.get_upper()
+    );
+
+    let first_line = (vadj_value / state.font_height) as usize;
+    let last_line = ((vadj_value + f64::from(da_height)) / state.font_height) as usize + 1;
     let last_line = min(last_line, num_lines);
 
     // Calculate ordinal or max line length
@@ -976,7 +981,7 @@ fn handle_gutter_draw(state: &mut State, cr: &Context) -> Inhibit {
 
     for i in first_line..last_line {
         // Keep track of the starting x position
-        cr.move_to(0.0, state.font_height * (i as f64) - vadj.get_value());
+        cr.move_to(0.0, state.font_height * (i as f64) - vadj_value);
 
         // set_source_color(cr, state.model.theme.gutter_foreground);
         cr.set_source_rgba(
@@ -1030,10 +1035,16 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
 
     let vadj = state.vadj.clone();
     let hadj = state.hadj.clone();
+
+    // We round the values from the scrollbars, because if we don't, rectangles
+    // will be antialiased and lines will show up inbetween highlighted lines
+    // of text.
+    let vadj_value = f64::round(vadj.get_value());
+    let hadj_value = f64::round(hadj.get_value());
     trace!("drawing.  vadj={}, {}", vadj.get_value(), vadj.get_upper());
 
-    let first_line = (vadj.get_value() / state.font_height) as usize;
-    let last_line = ((vadj.get_value() + f64::from(da_height)) / state.font_height) as usize + 1;
+    let first_line = (vadj_value / state.font_height) as usize;
+    let last_line = ((vadj_value + f64::from(da_height)) / state.font_height) as usize + 1;
     let last_line = min(last_line, num_lines);
     let visible_lines = first_line..last_line;
 
@@ -1082,10 +1093,7 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
         if let Some((line, attrs)) = buffer.get_line_with_attributes(view_id, i, &text_theme) {
             // let line = buffer.line(i);
 
-            cr.move_to(
-                -hadj.get_value(),
-                state.font_height * (i as f64) - vadj.get_value(),
-            );
+            cr.move_to(-hadj_value, state.font_height * (i as f64) - vadj_value);
 
             cr.set_source_rgba(
                 text_theme.fg.r_f64(),
@@ -1120,8 +1128,8 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
                 let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
                 let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
                 cr.rectangle(
-                    (x as f64) - hadj.get_value(),
-                    (((state.font_height) as usize) * i) as f64 - vadj.get_value(),
+                    (x as f64) - hadj_value,
+                    (((state.font_height) as usize) * i) as f64 - vadj_value,
                     CURSOR_WIDTH,
                     state.font_height,
                 );
@@ -1133,7 +1141,7 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     // Now that we know actual length of the text, adjust the scrollbar properly.
     // But we need to make sure we don't make the upper value smaller than the current viewport
     let mut h_upper = f64::from(max_width / pango::SCALE);
-    let cur_h_max = hadj.get_value() + hadj.get_page_size();
+    let cur_h_max = hadj_value + hadj.get_page_size();
     if cur_h_max > h_upper {
         h_upper = cur_h_max;
     }
