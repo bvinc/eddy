@@ -640,6 +640,8 @@ impl EditView {
         vadj.set_page_size(f64::from(da_height));
         let hadj = state.hadj.clone();
         hadj.set_page_size(f64::from(da_width));
+
+        self.on_text_change(state);
     }
 
     fn handle_scroll(&self, _state: &mut State, _es: &EventScroll) {
@@ -767,7 +769,7 @@ impl EditView {
     }
 
     fn handle_drag(&self, state: &mut State, em: &EventMotion) {
-        if em.get_state() != ModifierType::BUTTON1_MASK {
+        if !em.get_state().contains(ModifierType::BUTTON1_MASK) {
             return;
         }
         let view_id = state.model.view_id;
@@ -841,12 +843,18 @@ impl EditView {
 
         // let (text_width, text_height) = self.get_text_size(state);
         let text_height = buffer.len_lines() as f64 * state.font_height;
+        let da_height = f64::from(state.da.get_allocated_height());
         let vadj = state.vadj.clone();
         let hadj = state.hadj.clone();
 
         // update scrollbars to the new text width and height
         state.vadj.set_lower(0f64);
-        state.vadj.set_upper(text_height as f64);
+        let upper = if da_height > text_height {
+            da_height
+        } else {
+            text_height
+        };
+        state.vadj.set_upper(upper);
 
         // If the last line was removed, scroll up so we're not overscrolled
         if vadj.get_value() + vadj.get_page_size() > vadj.get_upper() {
@@ -1155,7 +1163,7 @@ fn handle_draw(state: &mut State, cr: &Context) -> Inhibit {
     }
 
     let draw_end = Instant::now();
-    debug!("drawing took {}ms", (draw_end - draw_start).as_millis());
+    // debug!("drawing took {}ms", (draw_end - draw_start).as_millis());
 
     Inhibit(false)
 }

@@ -6,20 +6,22 @@ use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
-use crate::Range;
-use crate::Selection;
-use crate::ViewId;
+use crate::{BufferId, Msg, MsgSender, Range, Selection, ViewId};
+use anyhow::{bail, Context};
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
 use std::cmp::{max, min};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::ops::RangeBounds;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 // #[derive(Debug)]
 pub struct Buffer {
+    id: BufferId,
     path: Option<PathBuf>,
     // history_ix: usize,
     // history: Vec<Rope>,
@@ -32,12 +34,14 @@ pub struct Buffer {
     tab_size: usize,
     text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
     scroll_to_selections_cbs: HashMap<ViewId, Vec<Box<dyn Fn() + 'static>>>,
+    msg_sender: Arc<Mutex<MsgSender>>,
 }
 
 impl Buffer {
-    pub fn new() -> Self {
+    pub fn new(id: BufferId, msg_sender: Arc<Mutex<MsgSender>>) -> Self {
         let rope = Rope::new();
         Self {
+            id,
             path: None,
             history: History::new(&rope),
             rope,
@@ -48,12 +52,18 @@ impl Buffer {
             tab_size: 8,
             text_change_cbs: Vec::new(),
             scroll_to_selections_cbs: HashMap::new(),
+            msg_sender,
         }
     }
-    pub fn from_file(path: &Path) -> Result<Self, io::Error> {
+    pub fn from_file(
+        id: BufferId,
+        path: &Path,
+        msg_sender: Arc<Mutex<MsgSender>>,
+    ) -> Result<Self, io::Error> {
         let rope = Rope::from_reader(BufReader::new(File::open(path)?))?;
 
         let mut buffer = Buffer {
+            id,
             path: Some(path.to_owned()),
             history: History::new(&rope),
             rope,
@@ -64,6 +74,7 @@ impl Buffer {
             tab_size: 8,
             text_change_cbs: Vec::new(),
             scroll_to_selections_cbs: HashMap::new(),
+            msg_sender,
         };
         buffer.on_text_change();
         Ok(buffer)
@@ -1394,6 +1405,36 @@ impl Buffer {
 
         Some((line, spans))
     }
+
+    pub fn save(&mut self) -> Result<(), anyhow::Error> {
+        if let Some(ref path) = self.path {
+            let mut file = File::create(path)?;
+            let rope = &self.rope;
+            rope.write_to(&mut file)?;
+        } else {
+            bail!("cannot save, no known file path");
+        }
+        Ok(())
+    }
+
+    pub fn save_as(&mut self, path: &Path) -> Result<(), io::Error> {
+        let mut file = File::create(path)?;
+        let rope = &self.rope;
+        rope.write_to(&mut file)?;
+
+        self.path = Some(path.into());
+        self.msg_sender
+            .lock()
+            .unwrap()
+            .send(Msg::PathChanged(self.id));
+        Ok(())
+    }
+}
+
+impl fmt::Display for Buffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.rope.slice(..))
+    }
 }
 
 /*
@@ -1423,12 +1464,6 @@ impl Iterator for GraphemeIterator {
     fn next() -> Option<Item> {}
 }
 */
-impl ToString for Buffer {
-    #[inline]
-    fn to_string(&self) -> String {
-        self.rope.slice(..).into()
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1436,14 +1471,14 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         assert_eq!(buf.to_string(), "a");
     }
     #[test]
     fn test_insert2() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1453,7 +1488,7 @@ mod tests {
 
     #[test]
     fn test_move_left() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1463,7 +1498,7 @@ mod tests {
     }
     #[test]
     fn test_move_left_right() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1475,7 +1510,7 @@ mod tests {
 
     #[test]
     fn test_move_left_too_far() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.move_left(0);
         buf.move_left(0);
@@ -1485,7 +1520,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_too_far() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.move_right(0);
         buf.move_right(0);
@@ -1496,7 +1531,7 @@ mod tests {
 
     #[test]
     fn test_move_left_and_modify_selection() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left_and_modify_selection(0);
@@ -1509,7 +1544,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_and_modify_selection() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left(0);
@@ -1521,7 +1556,7 @@ mod tests {
     }
     #[test]
     fn test_move_up() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
         buf.move_left(0);
@@ -1531,7 +1566,7 @@ mod tests {
     }
     #[test]
     fn test_move_up2() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a\nbcd");
         buf.move_up(0);
@@ -1540,7 +1575,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_0() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1550,7 +1585,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_4() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1561,7 +1596,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_8() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1572,7 +1607,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_9() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1583,7 +1618,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_from_tab() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abcdefghi");
         buf.insert_newline(0);
@@ -1594,7 +1629,7 @@ mod tests {
     }
     #[test]
     fn test_move_down() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
         buf.move_left(0);
@@ -1611,7 +1646,7 @@ mod tests {
     }
     #[test]
     fn test_move_down2() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\nd");
         buf.move_left(0);
@@ -1628,7 +1663,7 @@ mod tests {
     }
     #[test]
     fn test_move_down3() {
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left(0);

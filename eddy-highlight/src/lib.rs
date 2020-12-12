@@ -244,7 +244,7 @@ impl<'a> HighlightIterLayer<'a> {
         parser: &mut Parser,
         tree: Tree,
         cancellation_flag: Option<&'a AtomicUsize>,
-        mut config: &'a HighlightConfiguration,
+        config: &'a HighlightConfiguration,
     ) -> Result<Self, Error> {
         parser
             .set_language(config.language)

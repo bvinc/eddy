@@ -11,19 +11,19 @@ mod scrollable_drawing_area;
 mod theme;
 mod widget;
 
-// use crate::dir_bar::DirBar;
 use crate::widget::dir_bar::DirBar;
 use crate::widget::editview::{self, EditView};
 use crate::widget::tab::{self, Tab};
-use eddy_workspace::Workspace;
+use anyhow::Context;
+use eddy_workspace::{Callbacks, Workspace};
 use gio::prelude::*;
 use gio::ApplicationExt;
 use gio::{ActionMapExt, ApplicationFlags, SimpleAction};
 use glib::variant::Variant;
 use gtk::prelude::*;
 use gtk::{
-    self, Application, ApplicationWindow, FileChooserAction, FileChooserDialog, Notebook, Paned,
-    ResponseType,
+    self, Application, ApplicationWindow, ButtonsType, Dialog, DialogFlags, FileChooserAction,
+    FileChooserDialog, MessageDialog, MessageType, Notebook, Paned, ResponseType,
 };
 use log::*;
 use relm::{connect, Channel, Relm, Update, Widget};
@@ -35,8 +35,10 @@ use std::collections::HashMap;
 use std::env::{args, home_dir};
 use std::include_str;
 use std::io;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use syntect::highlighting::ThemeSettings;
 
 pub struct MainState {
@@ -56,12 +58,14 @@ pub enum Msg {
     Find,
     New,
     Open,
-    OpenFile(ResponseType),
+    OpenPath(PathBuf),
+    OpenFileDialog(ResponseType),
     Prefs,
     Save,
     SaveAs,
-    SaveFile(ResponseType),
+    SaveFileDialog(ResponseType),
     Shutdown,
+    Workspace(::eddy_workspace::Msg),
     Quit,
 }
 
@@ -89,6 +93,7 @@ pub struct Win {
     view_to_page: HashMap<String, u32>,
     relm: Relm<Self>,
     dir_bar: relm::Component<DirBar>,
+    workspace_chan: Channel<::eddy_workspace::Msg>,
 }
 
 impl Update for Win {
@@ -127,13 +132,30 @@ impl Update for Win {
             Msg::CloseView(view_id) => self.close_view(&view_id),
             Msg::Find => self.find(),
             Msg::Prefs => self.prefs(),
-            Msg::New => self.handle_new_button().expect("TODO"),
+            Msg::New => {
+                let res = self.handle_new_button();
+                self.show_err(res);
+            }
             Msg::Open => self.handle_open_button(),
-            Msg::OpenFile(rt) => self.handle_open_file(rt).expect("TODO"),
-            Msg::Save => self.save(),
+            Msg::OpenPath(ref path) => {
+                let res = self.handle_open_path(path);
+                self.show_err(res);
+            }
+            Msg::OpenFileDialog(rt) => {
+                let res = self.handle_open_file(rt);
+                self.show_err(res);
+            }
+            Msg::Save => {
+                let res = self.save();
+                self.show_err(res);
+            }
             Msg::SaveAs => self.save_as(),
-            Msg::SaveFile(rt) => self.handle_save_file(rt),
+            Msg::SaveFileDialog(rt) => {
+                let res = self.handle_save_file(rt);
+                self.show_err(res);
+            }
             Msg::Shutdown => {}
+            Msg::Workspace(msg) => self.handle_workspace_msg(msg),
             Msg::Quit => self.model.application.quit(),
         }
     }
@@ -149,6 +171,20 @@ impl Widget for Win {
 
     fn view(relm: &Relm<Self>, model: Self::Model) -> Self {
         let application = model.application.clone();
+
+        let stream = relm.stream().clone();
+        let (workspace_chan, sender) = Channel::new(move |msg| {
+            stream.emit(Msg::Workspace(msg));
+        });
+        let sender = Arc::new(Mutex::new(sender));
+        let cb = move |msg| {
+            let sender = sender.lock().expect("unlock sender");
+            sender.send(msg).expect("send workspace msg");
+        };
+        {
+            let mut workspace = model.workspace.borrow_mut();
+            workspace.set_callback(cb);
+        }
 
         connect!(relm, application, connect_activate(_), Msg::Activate);
         connect!(relm, application, connect_open(_, _, _), Msg::Open);
@@ -169,10 +205,10 @@ impl Widget for Win {
         let sidebar_box: gtk::Box = builder.get_object("sidebar_box").unwrap();
         let dir_bar =
             relm::init::<DirBar>(relm.clone()).expect("failed to create dir bar component");
+        dir_bar.emit(crate::widget::dir_bar::Msg::SetDir(".".into()));
 
         // let dir_bar_id = DirBar::new(None, controller.clone());
 
-        trace!("view1.3");
         sidebar_paned.set_position(200);
         sidebar_paned.set_child_resize(&sidebar_box, false);
         sidebar_paned.set_child_resize(&notebook, true);
@@ -192,7 +228,7 @@ impl Widget for Win {
             relm,
             open_dialog,
             connect_response(_, rt),
-            Msg::OpenFile(rt)
+            Msg::OpenFileDialog(rt)
         );
         connect!(
             relm,
@@ -210,7 +246,7 @@ impl Widget for Win {
             relm,
             save_dialog,
             connect_response(_, rt),
-            Msg::SaveFile(rt)
+            Msg::SaveFileDialog(rt)
         );
         save_dialog.connect_delete_event(|w, _| {
             w.hide();
@@ -329,15 +365,27 @@ impl Widget for Win {
             view_to_page: HashMap::new(),
             relm: relm.clone(),
             dir_bar,
+            workspace_chan,
         }
     }
 }
 
 impl Win {
-    pub fn show_result(&mut self, res: Result<(), io::Error>) {
-        // TODO show an error if one exists
+    pub fn show_err(&mut self, res: Result<(), anyhow::Error>) {
+        if let Err(e) = res {
+            let dialog = MessageDialog::new(
+                Some(&self.app_win),
+                DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
+                MessageType::Error,
+                ButtonsType::Ok,
+                &format!("{}", e),
+            );
+            dialog.connect_response(|w, _| w.hide());
+            dialog.show();
+        }
     }
-    pub fn handle_new_button(&mut self) -> Result<(), io::Error> {
+
+    pub fn handle_new_button(&mut self) -> Result<(), anyhow::Error> {
         trace!("handle new button");
         let view_id = self.model.workspace.borrow_mut().new_view(None)?;
         self.new_view_response(view_id, None);
@@ -363,16 +411,31 @@ impl Win {
     pub fn find(&mut self) {
         debug!("find")
     }
-    pub fn save(&mut self) {
-        debug!("save")
+    pub fn save(&mut self) -> Result<(), anyhow::Error> {
+        debug!("save");
+
+        if let Some(idx) = self.notebook.get_current_page() {
+            let view_id = self.pages[idx as usize].view_id;
+            self.model.workspace.borrow_mut().save(view_id)?;
+        }
+
+        Ok(())
     }
+
     pub fn save_as(&mut self) {
         debug!("save_as");
         self.save_dialog.show_all();
     }
 
+    pub fn handle_open_path(&mut self, path: &Path) -> Result<(), anyhow::Error> {
+        debug!("handle open path {:?}", path);
+        let view_id = self.model.workspace.borrow_mut().new_view(Some(&path))?;
+        self.new_view_response(view_id, Some(path));
+        Ok(())
+    }
+
     // This is called in response to the FileChooserDialog
-    pub fn handle_open_file(&mut self, rt: ResponseType) -> Result<(), io::Error> {
+    pub fn handle_open_file(&mut self, rt: ResponseType) -> Result<(), anyhow::Error> {
         debug!("handle open file {:?}", rt);
         self.open_dialog.hide();
         if rt != ResponseType::Ok {
@@ -385,35 +448,45 @@ impl Win {
                 .workspace
                 .borrow_mut()
                 .new_view(Some(&file_name))?;
-            self.new_view_response(view_id, Some(file_name));
+            self.new_view_response(view_id, Some(&file_name));
         }
         Ok(())
     }
 
     // This is called in response to the FileChooserDialog
-    pub fn handle_save_file(&mut self, rt: ResponseType) {
+    pub fn handle_save_file(&mut self, rt: ResponseType) -> Result<(), anyhow::Error> {
         debug!("handle save file {:?}", rt);
         self.save_dialog.hide();
         if rt != ResponseType::Ok {
-            return;
+            return Ok(());
         }
         if let Some(filename) = self.save_dialog.get_filename() {
             if let Some(idx) = self.notebook.get_current_page() {
                 let view_id = self.pages[idx as usize].view_id;
-                self.model.workspace.borrow_mut().save(
+                self.model.workspace.borrow_mut().save_as(
                     view_id,
                     &PathBuf::from(&*filename.to_string_lossy().to_owned()),
-                );
+                )?;
             }
         }
+        Ok(())
     }
 
-    fn new_view_response(&mut self, view_id: usize, file_name: Option<PathBuf>) {
-        let tab_comp = relm::init::<Tab>((self.relm.clone(), view_id, file_name.clone()))
-            .expect("failed to create tab component");
+    pub fn handle_workspace_msg(&mut self, msg: eddy_workspace::Msg) {
+        debug!("handle workspace msg {:?}", msg);
+        self.model.workspace.borrow_mut().ls_initialized();
+    }
+
+    fn new_view_response(&mut self, view_id: usize, file_name: Option<&Path>) {
+        let tab_comp = relm::init::<Tab>((
+            self.relm.clone(),
+            view_id,
+            file_name.map(|p| p.to_path_buf()),
+        ))
+        .expect("failed to create tab component");
         let page_comp = relm::init::<EditView>((
             view_id,
-            file_name,
+            file_name.map(|p| p.to_path_buf()),
             true,
             self.relm.stream().clone(),
             self.model.workspace.clone(),

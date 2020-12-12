@@ -1,134 +1,274 @@
+use crate::Win;
+use anyhow::bail;
 use gtk::prelude::*;
+use gtk::TreeModelSort;
 use gtk::{
-    Adjustment, CellRendererText, ListStore, ScrolledWindow, TreeStore, TreeView, TreeViewColumn,
+    Adjustment, CellRendererText, ScrolledWindow, SortColumn, SortType, TreeIter, TreeModelFilter,
+    TreePath, TreeStore, TreeView, TreeViewColumn,
 };
+use relm::{connect, Relm, Update, Widget};
+use relm_derive::Msg;
+use std::fs;
 use std::path::{Path, PathBuf};
 
-use gtk::prelude::*;
-use gtk::Orientation::Horizontal;
-use gtk::TreeModelSort;
-use relm::{Relm, Widget};
-use relm_derive::{widget, Msg};
+pub struct DirBar {
+    model: Model,
+    scrolled_window: ScrolledWindow,
+    tree_view: TreeView,
+}
 
 pub struct Model {
+    dir: Option<PathBuf>,
     parent_relm: Relm<crate::Win>,
     tree_store: TreeStore,
-    tree_model_sort: TreeModelSort,
+    filter: TreeModelFilter,
 }
 
 #[derive(Msg)]
-pub enum Msg {}
+pub enum Msg {
+    SetDir(PathBuf),
+    RowExpanded(TreeIter, TreePath),
+    RowActivated(TreePath, TreeViewColumn),
+    TestExpandRow(TreeIter, TreePath),
+}
 
-#[widget]
-impl Widget for DirBar {
-    fn model(parent_relm: Relm<crate::Win>) -> Model {
-        let tree_store = TreeStore::new(&[String::static_type()]);
+impl Update for DirBar {
+    type Model = Model;
+    type ModelParam = Relm<Win>;
+    type Msg = Msg;
+
+    fn model(_: &Relm<Self>, param: Relm<Win>) -> Model {
+        let tree_store = TreeStore::new(&[String::static_type(), bool::static_type()]);
+        let tree_model_sort = TreeModelSort::new(&tree_store);
+        tree_model_sort.set_sort_column_id(SortColumn::Index(0), SortType::Ascending);
+
+        // Compare based off of the string value.  This is required because the
+        // default GTK sort seems to ignore leading dots.
+        tree_model_sort.set_sort_func(SortColumn::Index(0), |m, i1, i2| {
+            let v1: Option<String> = m.get_value(i1, 0).get().unwrap();
+            let v2: Option<String> = m.get_value(i2, 0).get().unwrap();
+            return v1.cmp(&v2);
+        });
+        let filter = TreeModelFilter::new(&tree_store, None);
+        // filter.set_visible_column(1);
         Model {
-            parent_relm,
+            dir: None,
+            parent_relm: param,
             tree_store: tree_store.clone(),
-            tree_model_sort: TreeModelSort::new(&tree_store),
+            filter,
         }
     }
 
     fn update(&mut self, event: Msg) {
-        match event {}
+        match event {
+            Msg::SetDir(ref p) => self.set_dir(Some(&p)),
+            Msg::RowExpanded(ti, tp) => self.row_expanded(ti, tp),
+            Msg::RowActivated(tp, tvc) => self.row_activated(tp, tvc),
+            Msg::TestExpandRow(ti, tp) => self.test_expand_row(ti, tp),
+        };
+    }
+}
+
+impl Widget for DirBar {
+    // Specify the type of the root widget.
+    type Root = ScrolledWindow;
+
+    // Return the root widget.
+    fn root(&self) -> Self::Root {
+        self.scrolled_window.clone()
     }
 
-    view! {
-        gtk::ScrolledWindow{
-            gtk::TreeView {
-                model: Some(&self.model.tree_model_sort),
-            },
+    // Create the widgets.
+    fn view(relm: &Relm<Self>, model: Self::Model) -> Self {
+        let scrolled_window = ScrolledWindow::new(None::<&Adjustment>, None::<&Adjustment>);
+
+        let column0 = TreeViewColumn::new();
+        let cell0 = CellRendererText::new();
+        column0.pack_start(&cell0, true);
+        column0.add_attribute(&cell0, "text", 0);
+
+        let tree_view = TreeView::new();
+        tree_view.set_model(Some(&model.filter));
+        tree_view.set_headers_visible(false);
+
+        tree_view.append_column(&column0);
+
+        // connect!(
+        //     relm,
+        //     tree_view,
+        //     connect_test_expand_row(_, ti, tp),
+        //     return (Msg::TestExpandRow(ti.clone(), tp.clone()), Inhibit(true))
+        // );
+        connect!(
+            relm,
+            tree_view,
+            connect_row_expanded(_, ti, tp),
+            Msg::RowExpanded(ti.clone(), tp.clone())
+        );
+        connect!(
+            relm,
+            tree_view,
+            connect_row_activated(_, tp, tvc),
+            Msg::RowActivated(tp.clone(), tvc.clone())
+        );
+
+        scrolled_window.add(&tree_view);
+
+        scrolled_window.show_all();
+
+        DirBar {
+            model,
+            scrolled_window,
+            tree_view,
         }
     }
 }
 
-// pub struct DirBar {
-//     dir: Option<PathBuf>,
-//     scrolled_window: ScrolledWindow,
-//     tree_view: TreeView,
-// }
+impl DirBar {
+    pub fn set_dir(&mut self, dir: Option<&Path>) -> Result<(), anyhow::Error> {
+        self.model.dir = dir.map(|p| p.canonicalize()).transpose()?;
+        println!("set dir {:?}", self.model.dir);
+        // self.model.tree_store = self.create_and_fill_model();
+        // self.gtktreeview1.set_model(Some(&self.model.tree_store));
+        // self.gtktreeview1.show_all();
+        self.refresh()?;
+        Ok(())
+    }
 
-// impl Component for DirBar {
-//     fn root_widget(&self) -> Widget {
-//         self.scrolled_window.clone().upcast::<Widget>()
-//     }
-// }
+    pub fn refresh(&mut self) -> Result<(), anyhow::Error> {
+        if let Some(ref dir) = self.model.dir {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let node = self.model.tree_store.insert_with_values(
+                    None,
+                    None,
+                    &[0, 1],
+                    &[&entry.file_name().to_string_lossy().to_string(), &true],
+                );
+                let metadata = entry.metadata()?;
+                if metadata.is_dir() {
+                    self.model.tree_store.insert_with_values(
+                        Some(&node),
+                        None,
+                        &[0, 1],
+                        &[&".", &false],
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 
-// fn create_and_fill_model2() -> ListStore {
-//     // Creation of a model with two rows.
-//     let model = ListStore::new(&[u32::static_type(), String::static_type()]);
+    /// Clear a node in the tree of all of its children
+    pub fn clear_tree_iter_children(&mut self, ti: &TreeIter) {
+        let mut pi = self.model.tree_store.iter_children(Some(ti));
+        if let Some(ref mut p) = pi {
+            if !self.model.tree_store.remove(p) {
+                return;
+            }
 
-//     // Filling up the tree view.
-//     let entries = &["Michel", "Sara", "Liam", "Zelda", "Neo", "Octopus master"];
-//     for (i, entry) in entries.iter().enumerate() {
-//         model.insert_with_values(None, &[0, 1], &[&(i as u32 + 1), &entry]);
-//     }
-//     model
-// }
+            while self.model.tree_store.iter_next(p) {
+                if !self.model.tree_store.remove(p) {
+                    return;
+                }
+            }
+        }
+    }
 
-// impl DirBar {
-//     pub fn new(dir: Option<&Path>, ctrl: ControllerRef) -> CompId {
-//         let column = TreeViewColumn::new();
-//         let cell = CellRendererText::new();
-//         column.pack_start(&cell, true);
-//         column.add_attribute(&cell, "text", 0);
+    /// Given a path in the tree, clear it of its children, and re-read the
+    /// files from the disk.
+    pub fn refresh_dir(&mut self, tp: &TreePath, path: &Path) -> Result<(), anyhow::Error> {
+        dbg!("refresh_dir");
+        if let Some(ref ti) = self.model.tree_store.get_iter(tp) {
+            // self.clear_tree_iter_children(ti);
+            dbg!("adding dot");
+            self.model
+                .tree_store
+                .insert_with_values(Some(ti), None, &[0, 1], &[&".", &false]);
+            dbg!("added dot");
+        }
 
-//         let tree_view = TreeView::new();
-//         tree_view.append_column(&column);
-//         // tree_view.set_model(Some(&create_and_fill_model()));
+        if let Some(ref ti) = self.model.tree_store.get_iter(tp) {
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let node = self.model.tree_store.insert_with_values(
+                    Some(ti),
+                    None,
+                    &[0, 1],
+                    &[&entry.file_name().to_string_lossy().to_string(), &true],
+                );
+                let metadata = entry.metadata()?;
+                if metadata.is_dir() {
+                    self.model.tree_store.insert_with_values(
+                        Some(&node),
+                        None,
+                        &[0, 1],
+                        &[&".", &false],
+                    );
+                }
+            }
+            Ok(())
+        } else {
+            bail!("invalid tree path")
+        }
+    }
 
-//         tree_view.set_size_request(10, 10);
-//         tree_view.show_all();
+    /// Called when a row of the tree is expanded.
+    pub fn test_expand_row(&mut self, _ti: TreeIter, tp: TreePath) -> Result<(), anyhow::Error> {
+        dbg!("test_row_expanded");
+        let path = self.tree_path_to_path(&tp)?;
+        self.refresh_dir(&tp, &path)?;
 
-//         let scrolled_window = ScrolledWindow::new::<Adjustment, Adjustment>(None, None);
-//         scrolled_window.add(&tree_view);
-//         scrolled_window.set_size_request(10, 10);
+        Ok(())
+    }
 
-//         let db = DirBar {
-//             dir: dir.map(|p| p.to_path_buf()),
-//             scrolled_window,
-//             tree_view,
-//         };
-//         db.tree_view.set_model(Some(&db.create_and_fill_model()));
-//         ctrl.borrow_mut().register(Box::new(db))
-//     }
+    /// Called when a row of the tree is expanded.
+    pub fn row_expanded(&mut self, _ti: TreeIter, tp: TreePath) -> Result<(), anyhow::Error> {
+        dbg!("row_expanded");
+        let path = self.tree_path_to_path(&tp)?;
+        self.refresh_dir(&tp, &path)?;
 
-//     pub fn set_dir(&mut self, dir: Option<&Path>) {
-//         self.dir = dir.map(|p| p.to_path_buf());
-//         println!("set dir {:?}", dir);
-//         self.tree_view
-//             .set_model(Some(&self.create_and_fill_model()));
-//     }
+        // // Why do I have to call expand_row here?  I don't know.  If I don't,
+        // // then the process of removing the "." entry and adding the real
+        // // entries causes the row expansion to not happen.  Adding this fixes it.
+        // self.tree_view.expand_row(&tp, false);
 
-//     fn create_and_fill_model(&self) -> TreeStore {
-//         use walkdir::WalkDir;
+        Ok(())
+    }
 
-//         // Creation of a model with two rows.
-//         let model = TreeStore::new(&[String::static_type()]);
-//         if let Some(ref dir) = self.dir {
-//             for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-//                 // println!("{}", entry.path().display());
-//                 model.insert_with_values(
-//                     None,
-//                     None,
-//                     &[0],
-//                     &[&entry.path().to_string_lossy().as_ref()],
-//                 );
-//             }
-//         }
+    /// Given a TreePath, convert it to a PathBuf.  This is probably broken on
+    /// non-utf8 file paths.
+    pub fn tree_path_to_path(&self, tp: &TreePath) -> Result<PathBuf, anyhow::Error> {
+        if let Some(ref dir) = self.model.dir {
+            let mut stack = vec![];
+            let mut ti = self.model.tree_store.get_iter(tp).unwrap();
+            loop {
+                let val = self.model.tree_store.get_value(&ti, 0);
+                let s: String = val.get()?.unwrap();
+                stack.push(s);
 
-//         let mut parent = None;
+                if let Some(parent_ti) = self.model.tree_store.iter_parent(&ti) {
+                    ti = parent_ti;
+                } else {
+                    break;
+                }
+            }
+            let mut pb = PathBuf::from(dir);
+            for s in stack.iter().rev() {
+                pb.push(s);
+            }
+            Ok(pb)
+        } else {
+            bail!("no directory opened")
+        }
+    }
 
-//         // Filling up the tree view.
-//         let entries = &["Michel", "Sara", "Liam", "Zelda", "Neo", "Octopus master"];
-//         for (i, entry) in entries.iter().enumerate() {
-//             parent = Some(
-//                 model
-//                     .insert_with_values(parent.as_ref(), None, &[0], &[&entry])
-//                     .clone(),
-//             );
-//         }
-//         model
-//     }
-// }
+    pub fn row_activated(&mut self, tp: TreePath, _: TreeViewColumn) -> Result<(), anyhow::Error> {
+        let path = self.tree_path_to_path(&tp)?;
+        self.model
+            .parent_relm
+            .stream()
+            .emit(crate::Msg::OpenPath(path));
+        Ok(())
+    }
+}
