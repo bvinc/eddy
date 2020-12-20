@@ -28,7 +28,6 @@ use gtk::{
 use log::*;
 use relm::{connect, Channel, Relm, Update, Widget};
 use relm_derive::Msg;
-use serde_json::{json, Value};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -70,7 +69,7 @@ pub enum Msg {
 }
 
 pub struct Model {
-    relm: Relm<Win>,
+    _relm: Relm<Win>,
     workspace: Rc<RefCell<Workspace>>,
     // model: eddy_model::Model,
     application: Application,
@@ -79,8 +78,8 @@ pub struct Model {
 pub struct Page {
     view_id: usize,
     pristine: bool,
-    tab: relm::Component<Tab>,
-    page: relm::Component<EditView>,
+    _tab: relm::Component<Tab>,
+    _page: relm::Component<EditView>,
 }
 
 pub struct Win {
@@ -92,8 +91,8 @@ pub struct Win {
     pages: Vec<Page>,
     view_to_page: HashMap<String, u32>,
     relm: Relm<Self>,
-    dir_bar: relm::Component<DirBar>,
-    workspace_chan: Channel<::eddy_workspace::Msg>,
+    _dir_bar: relm::Component<DirBar>,
+    _workspace_chan: Channel<::eddy_workspace::Msg>,
 }
 
 impl Update for Win {
@@ -117,7 +116,7 @@ impl Update for Win {
         }
 
         Model {
-            relm: relm.clone(),
+            _relm: relm.clone(),
             workspace: Rc::new(RefCell::new(Workspace::new())),
             application,
         }
@@ -364,8 +363,8 @@ impl Widget for Win {
             pages: vec![],
             view_to_page: HashMap::new(),
             relm: relm.clone(),
-            dir_bar,
-            workspace_chan,
+            _dir_bar: dir_bar,
+            _workspace_chan: workspace_chan,
         }
     }
 }
@@ -498,8 +497,8 @@ impl Win {
         self.pages.push(Page {
             view_id,
             pristine: true,
-            tab: tab_comp,
-            page: page_comp,
+            _tab: tab_comp,
+            _page: page_comp,
         });
         self.view_to_page.insert(view_id.to_string(), page_num);
     }
