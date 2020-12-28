@@ -7,7 +7,7 @@ use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
 use crate::{BufferId, Msg, MsgSender, Range, Selection, ViewId};
-use anyhow::{bail, Context};
+use anyhow::bail;
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
 use std::cmp::{max, min};

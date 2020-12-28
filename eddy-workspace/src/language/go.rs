@@ -1,4 +1,4 @@
-use super::{print_tree, Layer};
+use super::Layer;
 use crate::language::capture::Capture;
 use eddy_ts::{language, Language, Node, Parser, Query, QueryCursor, Tree};
 use ropey::Rope;
@@ -71,7 +71,7 @@ impl Layer for GoLayer {
             None, //self.tree.as_ref(),
         );
         if let Some(tree) = &self.tree {
-            // print_tree(tree.root_node(), 0);
+            // super::print_tree(tree.root_node(), 0);
 
             self.node_to_capture.clear();
             let query = GoLayer::highlights_query();

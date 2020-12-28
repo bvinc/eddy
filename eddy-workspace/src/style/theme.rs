@@ -1,4 +1,4 @@
-use super::{Attr, Color};
+use super::Color;
 use crate::language::capture::Capture;
 use serde::Deserialize;
 use std::collections::HashMap;
