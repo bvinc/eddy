@@ -28,6 +28,9 @@ impl ThemeAttributes {
 pub struct Theme {
     pub fg: Color,
     pub bg: Color,
+    pub gutter: ThemeAttributes,
+    pub gutter_line_highlight: ThemeAttributes,
+    pub line_highlight: ThemeAttributes,
     pub selection: ThemeAttributes,
     pub cursor: Color,
     highlights: HashMap<Capture, ThemeAttributes>,
@@ -39,6 +42,9 @@ impl Theme {
             r##"
 fg     = "#fdf4c1"
 bg     = "#282828"
+line_highlight = {bg="#3c3836"}
+gutter = {bg="#3c3836", fg="#7c6f64"}
+gutter_line_highlight = {bg="#504945", fg="#fe8019"}
 cursor = "#fdf4c1"
 selection = {bg = "#4e4e4e"}
 line_number = {fg = "#7c6f64"}
@@ -70,6 +76,9 @@ line_number = {fg = "#7c6f64"}
     }
     pub fn from_str(s: &str) -> Result<Theme, Box<dyn Error>> {
         let tf: ThemeFile = toml::from_str(s)?;
+        let gutter = ThemeAttributes::from_file_attrs(tf.gutter);
+        let gutter_line_highlight = ThemeAttributes::from_file_attrs(tf.gutter_line_highlight);
+        let line_highlight = ThemeAttributes::from_file_attrs(tf.line_highlight);
         let selection = ThemeAttributes::from_file_attrs(tf.selection);
         let mut highlights = HashMap::new();
         for (name, value) in tf.highlights {
@@ -82,6 +91,9 @@ line_number = {fg = "#7c6f64"}
         Ok(Theme {
             fg: Color::from_str(&tf.fg)?,
             bg: Color::from_str(&tf.bg)?,
+            gutter,
+            gutter_line_highlight,
+            line_highlight,
             cursor: Color::from_str(&tf.cursor)?,
             selection,
             highlights,
@@ -96,6 +108,9 @@ line_number = {fg = "#7c6f64"}
 struct ThemeFile {
     pub fg: String,
     pub bg: String,
+    pub gutter: ThemeFileAttributes,
+    pub gutter_line_highlight: ThemeFileAttributes,
+    pub line_highlight: ThemeFileAttributes,
     pub cursor: String,
     pub selection: ThemeFileAttributes,
     pub highlights: HashMap<String, ThemeFileAttributes>,

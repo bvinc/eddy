@@ -79,8 +79,8 @@ pub struct ScrollableDrawingAreaPrivate {
 impl ObjectSubclass for ScrollableDrawingAreaPrivate {
     const NAME: &'static str = "ScrollableDrawingAreaPrivate";
     type ParentType = gtk::DrawingArea;
-    type Instance = subclass::simple::InstanceStruct<Self>;
-    type Class = subclass::simple::ClassStruct<Self>;
+    type Instance = subclass::basic::InstanceStruct<Self>;
+    type Class = subclass::basic::ClassStruct<Self>;
 
     glib_object_subclass!();
 
@@ -203,8 +203,8 @@ impl DrawingAreaImpl for ScrollableDrawingAreaPrivate {}
 
 glib_wrapper! {
     pub struct ScrollableDrawingArea(
-        Object<subclass::simple::InstanceStruct<ScrollableDrawingAreaPrivate>,
-        subclass::simple::ClassStruct<ScrollableDrawingAreaPrivate>,
+        Object<subclass::basic::InstanceStruct<ScrollableDrawingAreaPrivate>,
+        subclass::basic::ClassStruct<ScrollableDrawingAreaPrivate>,
         ScrollableDrawingAreaClass>)
         @extends gtk::Widget, gtk::DrawingArea,
         @implements gtk::Scrollable;

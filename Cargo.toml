@@ -1,11 +1,38 @@
 [workspace]
 members = [
-    "eddy",
-    "eddy-workspace",
-    "eddy-ts",
-    "eddy-highlight"
+	"eddy",
+	"eddy-workspace",
+	"eddy-ts",
+	"eddy-highlight"
 ]
 
 [profile.release]
 lto = true
 codegen-units = 1
+debug = 1
+
+[patch.crates-io]
+cairo-rs = { path = '/home/brain/src/gtk-rs-core/cairo' }
+cairo-sys-rs = { path = '/home/brain/src/gtk-rs-core/cairo/sys' }
+glib = { path = '/home/brain/src/gtk-rs-core/glib' }
+glib-sys = { path = '/home/brain/src/gtk-rs-core/glib/sys' }
+gobject-sys = { path = '/home/brain/src/gtk-rs-core/glib/gobject-sys' }
+graphene-rs = { path = '/home/brain/src/gtk-rs-core/graphene' }
+graphene-sys = { path = '/home/brain/src/gtk-rs-core/graphene/sys' }
+pango = { path = '/home/brain/src/gtk-rs-core/pango' }
+pangocairo = { path = '/home/brain/src/gtk-rs-core/pangocairo' }
+pango-sys = { path = '/home/brain/src/gtk-rs-core/pango/sys' }
+gdk4 = { path = '/home/brain/src/gtk4-rs/gdk4' }
+gdk4-sys = { path = '/home/brain/src/gtk4-rs/gdk4/sys' }
+
+[patch.'https://github.com/gtk-rs/gtk-rs-core']
+cairo-rs = { path = '/home/brain/src/gtk-rs-core/cairo' }
+cairo-sys-rs = { path = '/home/brain/src/gtk-rs-core/cairo/sys' }
+glib = { path = '/home/brain/src/gtk-rs-core/glib' }
+glib-sys = { path = '/home/brain/src/gtk-rs-core/glib/sys' }
+gobject-sys = { path = '/home/brain/src/gtk-rs-core/glib/gobject-sys' }
+graphene-rs = { path = '/home/brain/src/gtk-rs-core/graphene' }
+graphene-sys = { path = '/home/brain/src/gtk-rs-core/graphene/sys' }
+pango = { path = '/home/brain/src/gtk-rs-core/pango' }
+pangocairo = { path = '/home/brain/src/gtk-rs-core/pangocairo' }
+pango-sys = { path = '/home/brain/src/gtk-rs-core/pango/sys' }

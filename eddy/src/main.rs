@@ -1,4 +1,7 @@
 #![recursion_limit = "128"]
+// Remove these once it's no longer quickly changing
+#![allow(dead_code)]
+#![allow(unused_imports)]
 
 // mod clipboard;
 // mod edit_view;
@@ -6,40 +9,39 @@
 // mod controller;
 // mod dir_bar;
 // mod main_win;
-mod linecache;
-mod scrollable_drawing_area;
+// mod scrollable_drawing_area;
 mod theme;
-mod widget;
+// mod widget;
+mod app;
+mod ui;
 
-use crate::widget::dir_bar::DirBar;
-use crate::widget::editview::{self, EditView};
-use crate::widget::tab::{self, Tab};
-use anyhow::Context;
+// use crate::widget::dir_bar::DirBar;
+// use crate::widget::editview::{self, EditView};
+// use crate::widget::tab::{self, Tab};
+use crate::app::EddyApplication;
 use eddy_workspace::{Callbacks, Workspace};
-use gio::prelude::*;
-use gio::ApplicationExt;
-use gio::{ActionMapExt, ApplicationFlags, SimpleAction};
+use gio::{ApplicationFlags, SimpleAction};
 use glib::variant::Variant;
+use gtk::glib;
 use gtk::prelude::*;
 use gtk::{
     self, Application, ApplicationWindow, ButtonsType, Dialog, DialogFlags, FileChooserAction,
     FileChooserDialog, MessageDialog, MessageType, Notebook, Paned, ResponseType,
 };
-use log::*;
-use relm::{connect, Channel, Relm, Update, Widget};
-use relm_derive::Msg;
-use std::any::Any;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::env::{args, home_dir};
-use std::include_str;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use syntect::highlighting::ThemeSettings;
-
+// use log::*;
+// use relm::{connect, Channel, Relm, Update, Widget};
+// use relm_derive::Msg;
+// use std::any::Any;
+// use std::cell::RefCell;
+// use std::collections::HashMap;
+use std::env::args;
+// use std::include_str;
+// use std::io;
+// use std::path::Path;
+// use std::path::PathBuf;
+// use std::rc::Rc;
+// use std::sync::{Arc, Mutex};
+/*
 pub struct MainState {
     pub avail_langs: Vec<String>,
     pub themes: Vec<String>,
@@ -47,7 +49,6 @@ pub struct MainState {
     pub theme: ThemeSettings,
 }
 
-#[derive(Msg)]
 pub enum Msg {
     Activate,
     AutoIndent(SimpleAction, Option<Variant>),
@@ -517,6 +518,7 @@ impl Win {
         }
     }
 }
+*/
 
 fn main() {
     env_logger::init();
@@ -533,47 +535,44 @@ fn main() {
 
     // CONTROLLER.set(Controller::new(model.clone()));
     // let cont = Rc::new(RefCell::new(Controller::new(model.clone())));
-    let application = Application::new(
-        Some("com.github.bvinc.eddy"),
-        ApplicationFlags::HANDLES_OPEN,
-    )
-    .expect("failed to create gtk application");
 
-    let win = Rc::new(RefCell::new(None));
+    /*
+        let win = Rc::new(RefCell::new(None));
 
-    application.connect_startup(move |application| {
-        // let model = eddy_model::Model::new();
-        // model.init();
-        // let shared_queue = model.shared_queue();
-        // let reader_raw_fd = {
-        //     let sq = shared_queue.lock().expect("failed to lock shared queue");
-        //     sq.reader_raw_fd()
-        // };
+        application.connect_startup(move |application| {
+            // let model = eddy_model::Model::new();
+            // model.init();
+            // let shared_queue = model.shared_queue();
+            // let reader_raw_fd = {
+            //     let sq = shared_queue.lock().expect("failed to lock shared queue");
+            //     sq.reader_raw_fd()
+            // };
 
-        // // Implement a GSource based on our signaling pipe's reader FD
-        // let source = new_source(QueueSource {
-        //     queue: shared_queue.clone(),
-        // });
-        // unsafe {
-        //     use glib::translate::ToGlibPtr;
-        //     ::glib_sys::g_source_add_unix_fd(
-        //         source.to_glib_none().0,
-        //         reader_raw_fd,
-        //         ::glib_sys::G_IO_IN,
-        //     );
-        // }
+            // // Implement a GSource based on our signaling pipe's reader FD
+            // let source = new_source(QueueSource {
+            //     queue: shared_queue.clone(),
+            // });
+            // unsafe {
+            //     use glib::translate::ToGlibPtr;
+            //     ::glib_sys::g_source_add_unix_fd(
+            //         source.to_glib_none().0,
+            //         reader_raw_fd,
+            //         ::glib_sys::G_IO_IN,
+            //     );
+            // }
 
-        // model.client_started();
+            // model.client_started();
 
-        // // Attach it to the main context
-        // let main_context = MainContext::default();
-        // source.attach(Some(&main_context));
+            // // Attach it to the main context
+            // let main_context = MainContext::default();
+            // source.attach(Some(&main_context));
 
-        {
-            let mut w = win.borrow_mut();
-            *w = Some(relm::init::<Win>(application.clone()));
-        }
-    });
-
-    application.run(&args().collect::<Vec<_>>());
+            {
+                let mut w = win.borrow_mut();
+                *w = Some(relm::init::<Win>(application.clone()));
+            }
+        });
+    */
+    // application.run(&args().collect::<Vec<_>>());
+    EddyApplication::run();
 }

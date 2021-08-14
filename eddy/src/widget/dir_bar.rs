@@ -1,13 +1,13 @@
 use crate::Win;
-use log::*;
 use anyhow::bail;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::TreeModelSort;
 use gtk::{
-    Adjustment, CellRendererText, ScrolledWindow, SortColumn, SortType, TreeIter, 
-    TreePath, TreeStore, TreeView, TreeViewColumn,
+    Adjustment, CellRendererText, ScrolledWindow, SortColumn, SortType, TreeIter, TreePath,
+    TreeStore, TreeView, TreeViewColumn,
 };
+use log::*;
 use relm::{connect, Relm, Update, Widget};
 use relm_derive::Msg;
 use std::cell::RefCell;
@@ -151,25 +151,25 @@ impl DirBar {
 
     pub fn row_activated(&mut self, tp: TreePath, _: TreeViewColumn) -> Result<(), anyhow::Error> {
         let dir = self.model.dir.borrow().clone();
-            if let Some(ref ti) = self.model.tree_store.get_iter(&tp) {
-                if self.model.tree_store.iter_has_child(&ti) {
-                    if !self.tree_view.row_expanded(&tp) {
-                        self.tree_view.expand_row(&tp, false);
-                    } else {
-                        self.tree_view.collapse_row(&tp);
-                    }
-                    return Ok(());
+        if let Some(ref ti) = self.model.tree_store.get_iter(&tp) {
+            if self.model.tree_store.iter_has_child(&ti) {
+                if !self.tree_view.row_expanded(&tp) {
+                    self.tree_view.expand_row(&tp, false);
+                } else {
+                    self.tree_view.collapse_row(&tp);
                 }
-            } else {
-                bail!("invalid path")
+                return Ok(());
             }
-            let path = tree_path_to_path(dir.as_ref(), &self.model.tree_store, &tp)?;
-            self.model
-                .parent_relm
-                .stream()
-                .emit(crate::Msg::OpenPath(path));
-            Ok(())
+        } else {
+            bail!("invalid path")
         }
+        let path = tree_path_to_path(dir.as_ref(), &self.model.tree_store, &tp)?;
+        self.model
+            .parent_relm
+            .stream()
+            .emit(crate::Msg::OpenPath(path));
+        Ok(())
+    }
 }
 
 fn handle_test_expand_row(
@@ -207,15 +207,11 @@ pub fn refresh_dir(
         let metadata = entry.metadata()?;
         files.push((metadata.is_dir(), entry.file_name()));
     }
-    
+
     files.sort_unstable_by_key(|(is_dir, fname)| (!is_dir, fname.to_string_lossy().to_uppercase()));
     for (is_dir, fname) in files {
-        let node = tree_store.insert_with_values(
-            ti,
-            None,
-            &[0],
-            &[&fname.to_string_lossy().to_string()],
-        );
+        let node =
+            tree_store.insert_with_values(ti, None, &[0], &[&fname.to_string_lossy().to_string()]);
         if is_dir {
             tree_store.insert_with_values(Some(&node), None, &[0], &[&"."]);
         }

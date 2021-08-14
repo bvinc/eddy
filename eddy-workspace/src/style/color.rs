@@ -39,6 +39,16 @@ impl Color {
         (self.b as u16) << 8
     }
 
+    pub fn r_f32(&self) -> f32 {
+        (self.r as f32) / 255.0
+    }
+    pub fn g_f32(&self) -> f32 {
+        (self.g as f32) / 255.0
+    }
+    pub fn b_f32(&self) -> f32 {
+        (self.b as f32) / 255.0
+    }
+
     pub fn r_f64(&self) -> f64 {
         (self.r as f64) / 255.0
     }
