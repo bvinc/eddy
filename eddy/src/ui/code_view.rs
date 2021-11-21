@@ -25,8 +25,8 @@ use crate::app::Action;
 use crate::theme::Theme;
 
 pub struct CodeViewPrivate {
-    cvt: CodeViewText,
-    gutter: Gutter,
+    cvt: OnceCell<CodeViewText>,
+    gutter: OnceCell<Gutter>,
     hadj: Adjustment,
     vadj: Adjustment,
     sender: OnceCell<Sender<Action>>,
@@ -47,8 +47,8 @@ impl ObjectSubclass for CodeViewPrivate {
     fn new() -> Self {
         let sender = OnceCell::new();
         let workspace = OnceCell::new();
-        let cvt = CodeViewText::new();
-        let gutter = Gutter::new();
+        let cvt = OnceCell::new();
+        let gutter = OnceCell::new();
         let view_id = 0;
         let theme = Theme::default();
 
@@ -74,24 +74,6 @@ impl ObjectImpl for CodeViewPrivate {
         dbg!("cv constructed");
         self.parent_constructed(obj);
 
-        self.cvt.set_hadjust(&self.hadj);
-        self.cvt.set_vadjust(&self.vadj);
-
-        // obj.set_homogeneous(true);
-        let scrolled_window = gtk::ScrolledWindow::builder()
-            .hadjustment(&self.hadj)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
-            .vadjustment(&self.vadj)
-            .vscrollbar_policy(gtk::PolicyType::Always)
-            .min_content_width(360)
-            .child(&self.cvt)
-            .build();
-
-        obj.append(&self.gutter);
-        obj.append(&scrolled_window);
-
-        self.cvt.set_hscroll_policy(gtk::ScrollablePolicy::Natural);
-
         // obj.set_focusable(true);
         // obj.set_can_focus(true);
 
@@ -109,8 +91,8 @@ impl BoxImpl for CodeViewPrivate {}
 
 impl CodeViewPrivate {
     fn buffer_changed(&self) {
-        self.cvt.buffer_changed();
-        self.gutter.buffer_changed();
+        self.cvt.get().unwrap().buffer_changed();
+        self.gutter.get().unwrap().buffer_changed();
     }
 
     //fn get_text_node(&self,
@@ -125,26 +107,46 @@ glib::wrapper! {
 }
 
 impl CodeView {
-    pub fn new(sender: Sender<Action>, workspace: Rc<RefCell<Workspace>>) -> Self {
-        let code_view = glib::Object::new::<Self>(&[]).unwrap();
-        let code_view_priv = CodeViewPrivate::from_instance(&code_view);
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
+        let obj = glib::Object::new::<Self>(&[]).unwrap();
+        let imp = CodeViewPrivate::from_instance(&obj);
 
-        let _ = code_view_priv.sender.set(sender.clone());
-        code_view_priv.cvt.set_sender(sender.clone());
-        code_view_priv.gutter.set_sender(sender.clone());
+        let cvt = CodeViewText::new(workspace.clone(), sender.clone());
+        cvt.set_hadjust(&imp.hadj);
+        cvt.set_vadjust(&imp.vadj);
+        let _ = imp.cvt.set(cvt.clone());
 
-        let _ = code_view_priv.workspace.set(workspace.clone());
-        dbg!(code_view_priv.workspace.get().is_none());
-        code_view_priv.cvt.set_workspace(workspace.clone());
-        code_view_priv.gutter.set_workspace(workspace.clone());
+        let gutter = Gutter::new(workspace.clone(), sender.clone());
+        gutter.set_vadjust(&imp.vadj);
+        let _ = imp.gutter.set(gutter.clone());
+
+        // obj.set_homogeneous(true);
+        let scrolled_window = gtk::ScrolledWindow::builder()
+            .hadjustment(&imp.hadj)
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vadjustment(&imp.vadj)
+            .vscrollbar_policy(gtk::PolicyType::Always)
+            .min_content_width(360)
+            .child(&cvt.clone())
+            .build();
+
+        obj.append(&gutter);
+        obj.append(&scrolled_window);
+
+        cvt.set_hscroll_policy(gtk::ScrollablePolicy::Natural);
+
+        let _ = imp.sender.set(sender.clone());
+
+        let _ = imp.workspace.set(workspace.clone());
+        // dbg!(code_view_priv.workspace.get().is_none());
 
         // Subscribe to buffer change events.  Add a callback to queue drawing
         // on our drawing areas.
         {
-            let mut workspace = code_view_priv.workspace.get().unwrap().borrow_mut();
-            let sender2 = code_view_priv.sender.get().unwrap().clone();
-            let buffer = workspace.buffer(code_view_priv.view_id);
-            let view_id = code_view_priv.view_id;
+            let mut workspace = imp.workspace.get().unwrap().borrow_mut();
+            let sender2 = imp.sender.get().unwrap().clone();
+            let buffer = workspace.buffer(imp.view_id);
+            let view_id = imp.view_id;
             buffer.connect_update(move || {
                 if let Err(err) = sender2.send(Action::BufferChange { view_id }) {
                     error!("buffer changed: {}", err);
@@ -152,9 +154,9 @@ impl CodeView {
             });
         }
 
-        code_view.setup_widgets();
+        obj.setup_widgets();
         // code_view.setup_signals();
-        code_view
+        obj
     }
 
     pub fn view_id(&self) -> usize {

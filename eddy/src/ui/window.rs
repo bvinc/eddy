@@ -104,7 +104,7 @@ impl EddyApplicationWindow {
         let app: EddyApplication = self.application().unwrap().downcast().unwrap();
         let app_private = EddyApplicationPrivate::from_instance(&app);
         let page_num = self_.notebook.append_page(
-            &CodeView::new(app_private.sender.clone(), app_private.workspace.clone()),
+            &CodeView::new(app_private.workspace.clone(), app_private.sender.clone()),
             None::<&gtk::Widget>,
         );
         self_.pages.borrow_mut().push(Page {

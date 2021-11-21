@@ -1,4 +1,4 @@
-use eddy_workspace::style::{Attr, AttrSpan};
+use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
 use gdk::keys::Key;
 use gdk::ModifierType;
@@ -123,7 +123,7 @@ impl ObjectImpl for CodeViewTextPrivate {
     }
 
     fn property(&self, editable: &Self::Type, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-        dbg!(pspec.name());
+        // debug!("get property {}", pspec.name());
         match pspec.name() {
             "hadjustment" => self.hadj.borrow().to_value(),
             "hscroll-policy" => self.hscroll_policy.to_value(),
@@ -168,32 +168,32 @@ impl ObjectImpl for CodeViewTextPrivate {
         );
         obj.add_controller(&event_controller_key);
 
-        let event_controller_scroll = gtk::EventControllerScroll::builder()
-            .flags(
-                gtk::EventControllerScrollFlags::BOTH_AXES
-                    | gtk::EventControllerScrollFlags::KINETIC,
-            )
-            .name("codeviewtext")
-            .propagation_limit(gtk::PropagationLimit::SameNative)
-            .propagation_phase(gtk::PropagationPhase::Target)
-            .build();
-        event_controller_scroll.connect_decelerate(clone!(@strong obj as this => move |_,a,b| {
-            dbg!("connect_decelerate", a, b);
-        }));
-        event_controller_scroll.connect_scroll(clone!(@strong obj as this => move |_,a,b| {
-            dbg!("connect_scroll", a, b);
-            gtk::Inhibit(true)
-        }));
-        event_controller_scroll.connect_scroll_begin(clone!(@strong obj as this => move |_| {
-            dbg!("connect_scroll");
-        }));
-        event_controller_scroll.connect_scroll_end(clone!(@strong obj as this => move |_| {
-            dbg!("connect_scroll_end");
-        }));
-        event_controller_scroll.connect_flags_notify(clone!(@strong obj as this => move |_| {
-            dbg!("connect_flags_notify");
-        }));
-        obj.add_controller(&event_controller_scroll);
+        // let event_controller_scroll = gtk::EventControllerScroll::builder()
+        //     // .flags(
+        //     //     gtk::EventControllerScrollFlags::BOTH_AXES
+        //     //         | gtk::EventControllerScrollFlags::KINETIC,
+        //     // )
+        //     // .name("codeviewtext")
+        //     // .propagation_limit(gtk::PropagationLimit::SameNative)
+        //     // .propagation_phase(gtk::PropagationPhase::Target)
+        //     .build();
+        // // event_controller_scroll.connect_decelerate(clone!(@strong obj as this => move |_,a,b| {
+        // //     dbg!("connect_decelerate", a, b);
+        // // }));
+        // // event_controller_scroll.connect_scroll(clone!(@strong obj as this => move |_,a,b| {
+        // //     dbg!("connect_scroll", a, b);
+        // //     gtk::Inhibit(true)
+        // // }));
+        // // event_controller_scroll.connect_scroll_begin(clone!(@strong obj as this => move |_| {
+        // //     dbg!("connect_scroll");
+        // // }));
+        // // event_controller_scroll.connect_scroll_end(clone!(@strong obj as this => move |_| {
+        // //     dbg!("connect_scroll_end");
+        // // }));
+        // // event_controller_scroll.connect_flags_notify(clone!(@strong obj as this => move |_| {
+        // //     dbg!("connect_flags_notify");
+        // // }));
+        // obj.add_controller(&event_controller_scroll);
     }
 }
 impl WidgetImpl for CodeViewTextPrivate {
@@ -226,8 +226,7 @@ impl WidgetImpl for CodeViewTextPrivate {
     // }
     fn size_allocate(&self, obj: &Self::Type, w: i32, h: i32, bl: i32) {
         self.parent_size_allocate(obj, w, h, bl);
-        dbg!(w, h, bl);
-        debug!("cvt size allocate");
+        debug!("cvt size allocate {} {} {}", w, h, bl);
 
         let vadj = self.vadj.borrow().clone();
         vadj.set_page_size(f64::from(h));
@@ -362,6 +361,36 @@ impl CodeViewTextPrivate {
         */
 
         // Highlight cursor lines
+        let mut highlight_bg_color = gdk::RGBA::white();
+        change_to_color(&mut highlight_bg_color, Some(text_theme.bg));
+        change_to_color(&mut highlight_bg_color, text_theme.line_highlight.bg);
+        for i in first_line..last_line {
+            for sel in buffer.selections(view_id) {
+                if buffer.char_to_line(sel.cursor()) != i {
+                    continue;
+                }
+
+                let rect_node = gtk::gsk::ColorNode::new(
+                    &highlight_bg_color,
+                    &graphene::Rect::new(
+                        0.0,
+                        font_height as f32 * (i as f32) - vadj_value as f32,
+                        da_width as f32,
+                        font_height as f32,
+                    ),
+                );
+
+                let clip_node = gtk::gsk::ClipNode::new(
+                    &rect_node,
+                    &graphene::Rect::new(0.0, 0.0, da_width as f32, da_height as f32),
+                );
+
+                snapshot.append_node(&clip_node);
+                break;
+            }
+        }
+
+        // Highlight cursor lines
         // for i in first_line..last_line {
         //     cr.set_source_rgba(0.8, 0.8, 0.8, 1.0);
         //     if let Some(line) = self.line_cache.get_line(i) {
@@ -390,22 +419,9 @@ impl CodeViewTextPrivate {
             if let Some((line, attrs)) =
                 buffer.get_line_with_attributes(view_id, line_num, &text_theme)
             {
-                // let line = buffer.line(i);
-
-                /*
-                cr.move_to(-hadj_value, state.font_height * (i as f64) - vadj_value);
-
-                cr.set_source_rgba(
-                    text_theme.fg.r_f64(),
-                    text_theme.fg.g_f64(),
-                    text_theme.fg.b_f64(),
-                    1.0,
-                );
-                 */
-
                 let text: Cow<str> = line.into();
-                buffer.filter_line_to_display(&text, &mut filtered_line);
-                let text = &filtered_line;
+                // buffer.filter_line_to_display(&text, &mut filtered_line);
+                // let text = &filtered_line;
 
                 let pango_attrs = self.create_pango_attr_list(&attrs);
                 let line_x = -hadj_value as f32;
@@ -474,6 +490,7 @@ impl CodeViewTextPrivate {
                         }
                     }
                     pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
+                    self.adjust_glyph_tabs(&text, &item, &mut glyphs);
                     // this calculates width
                     let width = glyphs.width();
 
@@ -488,7 +505,8 @@ impl CodeViewTextPrivate {
                                 font_height as f32,
                             ),
                         );
-                        snapshot.append_node(&rect_node);
+                        append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
+                        // snapshot.append_node(&rect_node);
                     }
 
                     // Append text node to snapshot
@@ -501,15 +519,8 @@ impl CodeViewTextPrivate {
                             line_y,
                         ),
                     ) {
-                        // Lets clip the text node to the widget area
-                        let width = cv.allocated_width();
-                        let height = cv.allocated_height();
-                        let clip_node = gtk::gsk::ClipNode::new(
-                            &text_node,
-                            &graphene::Rect::new(0.0, 0.0, width as f32, height as f32),
-                        );
-
-                        snapshot.append_node(&clip_node);
+                        append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
+                        // snapshot.append_node(&clip_node);
                     }
 
                     layout_line.push(LayoutItem {
@@ -565,39 +576,9 @@ impl CodeViewTextPrivate {
                             font_height as f32,
                         ),
                     );
-                    snapshot.append_node(&rect_node);
-                    // cr.rectangle(
-                    //     (x as f64) - hadj_value,
-                    //     (((state.font_height) as usize) * i) as f64 - vadj_value,
-                    //     CURSOR_WIDTH,
-                    //     state.font_height,
-                    // );
-                    // cr.fill();
-                }
 
-                /*
-                cr.set_source_rgba(
-                    text_theme.cursor.r_f64(),
-                    text_theme.cursor.g_f64(),
-                    text_theme.cursor.b_f64(),
-                    1.0,
-                );
-
-                for sel in buffer.selections(view_id) {
-                    if buffer.char_to_line(sel.cursor()) != i {
-                        continue;
-                    }
-                    let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
-                    let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
-                    cr.rectangle(
-                        (x as f64) - hadj_value,
-                        (((state.font_height) as usize) * i) as f64 - vadj_value,
-                        CURSOR_WIDTH,
-                        state.font_height,
-                    );
-                    cr.fill();
+                    append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
                 }
-                */
             }
         }
 
@@ -676,81 +657,24 @@ impl CodeViewTextPrivate {
         layout
     }
 
-    fn append_text_to_snapshot(
+    fn adjust_glyph_tabs(
         &self,
-        cv: &CodeViewText,
-        text_theme: &eddy_workspace::style::Theme,
-        snapshot: &gtk::Snapshot,
-        text: &str,
-        attrs: pango::AttrList,
-        x: f32,
-        y: f32,
+        text: &Cow<str>,
+        item: &pango::Item,
+        glyphs: &mut pango::GlyphString,
     ) {
-        let pango_ctx = cv.pango_context();
-
-        let items = pango::itemize_with_base_dir(
-            &pango_ctx,
-            pango::Direction::Ltr,
-            text,
-            0,
-            text.len() as i32,
-            &attrs,
-            None,
-        );
-
-        let mut x_off = 0.0;
-        for item in items {
-            let mut glyphs = pango::GlyphString::new();
-            let item_text = unsafe {
-                std::str::from_utf8_unchecked(
-                    &text.as_bytes()
-                        [item.offset() as usize..item.offset() as usize + item.length() as usize],
-                )
-            };
-            // dbg!(item_text);
-            // if let Some(metrics) = item.analysis().font().metrics(None) {
-            //     dbg!(metrics.height(), metrics.ascent(), metrics.descent());
-            // }
-            let mut color = gdk::RGBA::black();
-            color.red = text_theme.fg.r_f32();
-            color.green = text_theme.fg.g_f32();
-            color.blue = text_theme.fg.b_f32();
-            // dbg!(color.red, color.green, color.blue);
-            for attr in &item.analysis().extra_attrs() {
-                // dbg!(
-                //     attr.get_start_index(),
-                //     attr.get_end_index(),
-                //     attr.get_attr_class().type_()
-                // );
-                if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                    let pc = ca.color();
-                    color.red = pc.red() as f32 / 65536.0;
-                    color.green = pc.green() as f32 / 65536.0;
-                    color.blue = pc.blue() as f32 / 65536.0;
-                }
-                // dbg!(format!("{}", ca.color()));
-            }
-            pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
-            // this calculates width
-            let width = glyphs.width() as f32 / pango::SCALE as f32;
-
-            if let Some(text_node) = gtk::gsk::TextNode::new(
-                &item.analysis().font(),
-                &mut glyphs,
-                &color,
-                &graphene::Point::new(x + x_off, y),
-            ) {
-                let width = cv.allocated_width();
-                let height = cv.allocated_height();
-                let clip_node = gtk::gsk::ClipNode::new(
-                    &text_node,
-                    &graphene::Rect::new(0.0, 0.0, width as f32, height as f32),
-                );
-
-                snapshot.append_node(&clip_node);
-            }
-            x_off += width;
+        let glyph_info = glyphs.glyph_info_mut();
+        // dbg!(&glyph_info);
+        if glyph_info.len() == 0 {
+            return;
         }
+        // dbg!(&text, item.offset());
+        if text.bytes().nth(item.offset() as usize) == Some(b'\t') {
+            dbg!("adjusting tab at", item.offset());
+            glyph_info[0].geometry_mut().set_width(1024 * 100);
+        }
+        // for gi in &mut glyphs.glyph_info() {
+        // }
     }
 
     //fn get_text_node(&self,
@@ -766,37 +690,42 @@ glib::wrapper! {
 }
 
 impl CodeViewText {
-    pub fn new() -> Self {
-        let code_view = glib::Object::new::<Self>(&[]).unwrap();
-        let code_view_priv = CodeViewTextPrivate::from_instance(&code_view);
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
+        let obj = glib::Object::new::<Self>(&[]).unwrap();
+        let imp = CodeViewTextPrivate::from_instance(&obj);
+
+        imp.workspace.set(workspace);
+        imp.sender.set(sender);
 
         // code_view.setup_widgets();
         // code_view.setup_signals();
-        code_view
+        obj
     }
 
     // fn setup_widgets(&self) {}
 
     // fn setup_signals(&self) {}
 
-    pub fn set_sender(&self, sender: Sender<Action>) {
-        let code_view_priv = CodeViewTextPrivate::from_instance(self);
-        let _ = code_view_priv.sender.set(sender);
-    }
-
-    pub fn set_workspace(&self, workspace: Rc<RefCell<Workspace>>) {
-        let code_view_priv = CodeViewTextPrivate::from_instance(self);
-        let _ = code_view_priv.workspace.set(workspace);
-    }
-
     pub fn set_hadjust(&self, adj: &Adjustment) {
-        let mut code_view_priv = CodeViewTextPrivate::from_instance(self);
-        code_view_priv.hadj.replace(adj.clone());
+        let cvt_priv = CodeViewTextPrivate::from_instance(self);
+        cvt_priv.hadj.replace(adj.clone());
+        cvt_priv
+            .hadj
+            .borrow()
+            .connect_value_changed(clone!(@weak self as cvt => move |_| {
+                cvt.queue_draw();
+            }));
     }
 
     pub fn set_vadjust(&self, adj: &Adjustment) {
-        let mut code_view_priv = CodeViewTextPrivate::from_instance(self);
-        code_view_priv.vadj.replace(adj.clone());
+        let cvt_priv = CodeViewTextPrivate::from_instance(self);
+        cvt_priv.vadj.replace(adj.clone());
+        cvt_priv
+            .vadj
+            .borrow()
+            .connect_value_changed(clone!(@weak self as cvt => move |_| {
+                cvt.queue_draw();
+            }));
     }
 
     pub fn buffer_changed(&self) {
@@ -936,5 +865,23 @@ impl CodeViewText {
                 }
             }
         };
+    }
+}
+
+fn append_clipped_node<P: AsRef<gtk::gsk::RenderNode>>(
+    snapshot: &gtk::Snapshot,
+    node: P,
+    w: f32,
+    h: f32,
+) {
+    let clip_node = gtk::gsk::ClipNode::new(&node, &graphene::Rect::new(0.0, 0.0, w, h));
+    snapshot.append_node(&clip_node);
+}
+
+fn change_to_color(gc: &mut gdk::RGBA, c: Option<Color>) {
+    if let Some(c) = c {
+        gc.red = c.r_f32();
+        gc.green = c.g_f32();
+        gc.blue = c.b_f32();
     }
 }

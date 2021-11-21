@@ -202,8 +202,8 @@ impl LanguageServerClient {
 
         let init_params = InitializeParams {
             process_id: Some(process::id()),
-            root_uri,
             root_path: None,
+            root_uri,
             initialization_options: None,
             capabilities: client_capabilities,
             trace: Some(TraceOption::Verbose),
@@ -212,6 +212,7 @@ impl LanguageServerClient {
                 name: "Eddy".into(),
                 version: Some("0.1.0".into()),
             }),
+            locale: None,
         };
 
         let params = Params::from(serde_json::to_value(init_params).unwrap());

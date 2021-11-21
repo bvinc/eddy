@@ -1,4 +1,4 @@
-use eddy_workspace::style::{Attr, AttrSpan};
+use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
 use gdk::keys::Key;
 use gdk::ModifierType;
@@ -15,7 +15,7 @@ use once_cell::unsync::OnceCell;
 use pango::Attribute;
 use ropey::RopeSlice;
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::{max, min};
 use std::rc::Rc;
 use std::time::Instant;
@@ -24,12 +24,12 @@ use crate::app::Action;
 use crate::theme::Theme;
 
 pub struct GutterPrivate {
-    vadj: Adjustment,
+    vadj: RefCell<Adjustment>,
     sender: OnceCell<Sender<Action>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: usize,
     theme: Theme,
-    gutter_nchars: usize,
+    gutter_nchars: Cell<usize>,
 }
 
 #[glib::object_subclass]
@@ -45,8 +45,8 @@ impl ObjectSubclass for GutterPrivate {
         let workspace = OnceCell::new();
         let view_id = 0;
         let theme = Theme::default();
-        let vadj = Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-        let gutter_nchars = 3;
+        let vadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+        let gutter_nchars = Cell::new(0);
 
         Self {
             vadj,
@@ -92,13 +92,14 @@ impl WidgetImpl for GutterPrivate {
         for_size: i32,
     ) -> (i32, i32, i32, i32) {
         self.parent_measure(obj, orientation, for_size);
-        dbg!(orientation, for_size);
+
+        let nchars = std::cmp::max(self.gutter_nchars.get(), 2) + 2;
 
         let pango_ctx = obj.pango_context();
         if let Some(metrics) = pango_ctx.metrics(None, None) {
             let font_width = metrics.approximate_digit_width() as f64 / pango::SCALE as f64;
-            let minimum_size = self.gutter_nchars as i32 * font_width as i32;
-            let natural_size = self.gutter_nchars as i32 * font_width as i32;
+            let minimum_size = nchars as i32 * font_width as i32;
+            let natural_size = nchars as i32 * font_width as i32;
             let minimum_baseline = -1;
             let natural_baseline = -1;
             (
@@ -123,13 +124,19 @@ impl WidgetImpl for GutterPrivate {
 
 impl GutterPrivate {
     fn change_gutter_nchars(&mut self, obj: &Gutter, nchars: usize) {
-        if nchars != self.gutter_nchars {
-            self.gutter_nchars = nchars;
+        if nchars != self.gutter_nchars.get() {
+            self.gutter_nchars.set(nchars);
             obj.queue_resize();
         }
     }
 
     fn buffer_changed(&self, gutter: &Gutter) {
+        let mut workspace = self.workspace.get().unwrap().borrow_mut();
+        let view_id = self.view_id;
+        let (buffer, _) = workspace.buffer_and_theme(view_id);
+        let max_line_num = buffer.len_lines();
+        self.gutter_nchars.set(format!("{}", max_line_num).len());
+
         gutter.queue_draw();
         gutter.queue_resize();
     }
@@ -137,11 +144,6 @@ impl GutterPrivate {
     fn handle_draw(&self, cv: &Gutter, snapshot: &gtk::Snapshot) {
         let draw_start = Instant::now();
 
-        // let css_provider = gtk::CssProvider::new();
-        // css_provider.load_from_data("* { background-color: #000000; }".as_bytes());
-        // let ctx = cv.style_context();
-        // ctx.add_provider(&css_provider, 1);
-        // let foreground = self.model.main_state.borrow().theme.foreground;
         let theme = &self.theme;
 
         let da_width = cv.allocated_width();
@@ -151,26 +153,15 @@ impl GutterPrivate {
         let view_id = self.view_id;
         let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
-        //debug!("Drawing");
-        // cr.select_font_face("Mono", ::cairo::enums::FontSlant::Normal, ::cairo::enums::FontWeight::Normal);
-        // let mut font_options = cr.get_font_options();
-        // debug!("font options: {:?} {:?} {:?}", font_options, font_options.get_antialias(), font_options.get_hint_style());
-        // font_options.set_hint_style(HintStyle::Full);
-
         // let (text_width, text_height) = self.get_text_size();
         let num_lines = buffer.len_lines();
 
-        // Calculate ordinal or max line length
-        let padding: usize = format!("{}", num_lines).len();
-        // dbg!(padding);
-
-        let vadj = self.vadj.clone();
+        let vadj = self.vadj.borrow().clone();
 
         // We round the values from the scrollbars, because if we don't, rectangles
         // will be antialiased and lines will show up inbetween highlighted lines
         // of text.
         let vadj_value = f64::round(vadj.value());
-        let hadj_value = 0f64;
         trace!("gutter drawing.  vadj={}, {}", vadj.value(), vadj.upper());
 
         // TESTING
@@ -190,17 +181,14 @@ impl GutterPrivate {
         let last_line = ((vadj_value + f64::from(da_height)) / font_height) as usize + 1;
         let last_line = min(last_line, num_lines);
         let visible_lines = first_line..last_line;
+        // debug!("visible lines {} {}", first_line, last_line);
 
         let pango_ctx = cv.pango_context();
 
         // Draw background
         // need to set color to text_theme.background?
         let mut bg_color = gdk::RGBA::white();
-        if let Some(gutter_bg) = text_theme.gutter.bg {
-            bg_color.red = gutter_bg.r_f32();
-            bg_color.green = gutter_bg.g_f32();
-            bg_color.blue = gutter_bg.b_f32();
-        }
+        change_to_color(&mut bg_color, text_theme.gutter.bg);
 
         let rect_node = gtk::gsk::ColorNode::new(
             &bg_color,
@@ -208,155 +196,76 @@ impl GutterPrivate {
         );
         snapshot.append_node(&rect_node);
 
-        /*
-        // set_source_color(cr, theme.foreground);
-        cr.set_source_rgba(
-            text_theme.fg.r_f64(),
-            text_theme.fg.g_f64(),
-            text_theme.fg.b_f64(),
-            1.0,
-        );
-        */
-
         // Highlight cursor lines
-        // for i in first_line..last_line {
-        //     cr.set_source_rgba(0.8, 0.8, 0.8, 1.0);
-        //     if let Some(line) = self.line_cache.get_line(i) {
-        //         if !line.cursor().is_empty() {
-        //             cr.set_source_rgba(0.23, 0.23, 0.23, 1.0);
-        //             cr.rectangle(
-        //                 0f64,
-        //                 font_extents.height * ((i + 1) as f64) - font_extents.ascent - vadj.get_value(),
-        //                 da_width as f64,
-        //                 font_extents.ascent + font_extents.descent,
-        //             );
-        //             cr.fill();
-        //         }
-        //     }
-        // }
-
-        const CURSOR_WIDTH: f64 = 2.0;
-        let mut max_width = 0;
-        for i in visible_lines {
-            // Keep track of the starting x position
-            if let Some((line, attrs)) = buffer.get_line_with_attributes(view_id, i, &text_theme) {
-                // let line = buffer.line(i);
-
-                /*
-                cr.move_to(-hadj_value, state.font_height * (i as f64) - vadj_value);
-
-                cr.set_source_rgba(
-                    text_theme.fg.r_f64(),
-                    text_theme.fg.g_f64(),
-                    text_theme.fg.b_f64(),
-                    1.0,
-                );
-                 */
-
-                self.append_text_to_snapshot(
-                    cv,
-                    text_theme,
-                    snapshot,
-                    &format!("{:>offset$} ", i + 1, offset = padding),
-                    pango::AttrList::new(),
-                    -hadj_value as f32,
-                    font_ascent as f32 + font_height as f32 * (i as f32) - vadj_value as f32,
-                );
-                // Draw the cursors
-                /*
-                cr.set_source_rgba(
-                    text_theme.cursor.r_f64(),
-                    text_theme.cursor.g_f64(),
-                    text_theme.cursor.b_f64(),
-                    1.0,
-                );
-
-                for sel in buffer.selections(view_id) {
-                    if buffer.char_to_line(sel.cursor()) != i {
-                        continue;
-                    }
-                    let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(i);
-                    let x = layout_line.index_to_x(line_byte as i32, false) / pango::SCALE;
-                    cr.rectangle(
-                        (x as f64) - hadj_value,
-                        (((state.font_height) as usize) * i) as f64 - vadj_value,
-                        CURSOR_WIDTH,
-                        state.font_height,
-                    );
-                    cr.fill();
+        let mut highlight_bg_color = gdk::RGBA::white();
+        change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
+        change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
+        for i in first_line..last_line {
+            for sel in buffer.selections(view_id) {
+                if buffer.char_to_line(sel.cursor()) != i {
+                    continue;
                 }
-                */
+
+                let rect_node = gtk::gsk::ColorNode::new(
+                    &highlight_bg_color,
+                    &graphene::Rect::new(
+                        0.0,
+                        font_height as f32 * (i as f32) - vadj_value as f32,
+                        da_width as f32,
+                        font_height as f32,
+                    ),
+                );
+
+                let clip_node = gtk::gsk::ClipNode::new(
+                    &rect_node,
+                    &graphene::Rect::new(0.0, 0.0, da_width as f32, da_height as f32),
+                );
+
+                snapshot.append_node(&clip_node);
+                break;
             }
         }
 
-        /*
-        if hadj.get_upper() != h_upper {
-            hadj.set_upper(h_upper);
-            // If I don't signal that the value changed, sometimes the overscroll "shadow" will stick
-            // This seems to make sure to tell the viewport that something has changed so it can
-            // reevaluate its need for a scroll shadow.
-            hadj.value_changed();
+        // Calculate ordinal or max line length
+        let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
+
+        for i in visible_lines {
+            let mut fg_color = gdk::RGBA::black();
+            change_to_color(&mut fg_color, text_theme.gutter.fg);
+
+            for sel in buffer.selections(view_id) {
+                if buffer.char_to_line(sel.cursor()) != i {
+                    continue;
+                }
+                change_to_color(&mut fg_color, text_theme.gutter_line_highlight.fg);
+                break;
+            }
+
+            // Keep track of the starting x position
+            if let Some((_, _)) = buffer.get_line_with_attributes(view_id, i, &text_theme) {
+                self.append_text_to_snapshot(
+                    cv,
+                    fg_color,
+                    snapshot,
+                    &format!("{:>offset$}", i + 1, offset = nchars + 1),
+                    pango::AttrList::new(),
+                    0.0,
+                    font_ascent as f32 + font_height as f32 * (i as f32) - vadj_value as f32,
+                );
+            }
         }
-        */
 
         let draw_end = Instant::now();
-        debug!("drawing took {}ms", (draw_end - draw_start).as_millis());
-    }
-
-    /// Creates a pango attr list from eddy attributes
-    fn create_pango_attr_list(&self, attr_spans: &[AttrSpan]) -> pango::AttrList {
-        let attr_list = pango::AttrList::new();
-        for aspan in attr_spans {
-            let mut pattr = match aspan.attr {
-                Attr::ForegroundColor(color) => {
-                    Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
-                }
-                Attr::BackgroundColor(color) => {
-                    Attribute::new_background(color.r_u16(), color.g_u16(), color.b_u16())
-                }
-            };
-            pattr.set_start_index(aspan.start_idx as u32);
-            pattr.set_end_index(aspan.end_idx as u32);
-            attr_list.insert(pattr);
-        }
-
-        attr_list
-    }
-
-    /// Creates a pango layout for a particular line
-    fn create_layout_for_line(
-        &self,
-        pango_ctx: &pango::Context,
-        line: &RopeSlice,
-        attr_spans: &[AttrSpan],
-    ) -> pango::Layout {
-        let layout = pango::Layout::new(pango_ctx);
-        let text: Cow<str> = (*line).into();
-        layout.set_text(&text);
-
-        let attr_list = pango::AttrList::new();
-        for aspan in attr_spans {
-            let mut pattr = match aspan.attr {
-                Attr::ForegroundColor(color) => {
-                    Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
-                }
-                Attr::BackgroundColor(color) => {
-                    Attribute::new_background(color.r_u16(), color.g_u16(), color.b_u16())
-                }
-            };
-            pattr.set_start_index(aspan.start_idx as u32);
-            pattr.set_end_index(aspan.end_idx as u32);
-            attr_list.insert(pattr);
-        }
-
-        layout.set_attributes(Some(&attr_list));
-        layout
+        debug!(
+            "drawing gutter took {}ms",
+            (draw_end - draw_start).as_millis()
+        );
     }
 
     fn append_text_to_snapshot(
         &self,
         cv: &Gutter,
-        text_theme: &eddy_workspace::style::Theme,
+        color: gdk::RGBA,
         snapshot: &gtk::Snapshot,
         text: &str,
         attrs: pango::AttrList,
@@ -385,27 +294,8 @@ impl GutterPrivate {
                 )
             };
             // dbg!(item_text);
-            let mut color = gdk::RGBA::black();
-            if let Some(gutter_fg) = text_theme.gutter.fg {
-                color.red = gutter_fg.r_f32();
-                color.green = gutter_fg.g_f32();
-                color.blue = gutter_fg.b_f32();
-            }
+
             // dbg!(color.red, color.green, color.blue);
-            for attr in &item.analysis().extra_attrs() {
-                // dbg!(
-                //     attr.get_start_index(),
-                //     attr.get_end_index(),
-                //     attr.get_attr_class().type_()
-                // );
-                if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                    let pc = ca.color();
-                    color.red = pc.red() as f32 / 65536.0;
-                    color.green = pc.green() as f32 / 65536.0;
-                    color.blue = pc.blue() as f32 / 65536.0;
-                }
-                // dbg!(format!("{}", ca.color()));
-            }
             pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
             // this calculates width
             let width = glyphs.width() as f32 / pango::SCALE as f32;
@@ -436,25 +326,39 @@ glib::wrapper! {
 }
 
 impl Gutter {
-    pub fn new() -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
         let gutter = glib::Object::new::<Self>(&[]).unwrap();
         let gutter_priv = GutterPrivate::from_instance(&gutter);
+
+        let _ = gutter_priv.workspace.set(workspace);
+        let _ = gutter_priv.sender.set(sender);
+
+        gutter_priv.buffer_changed(&gutter);
 
         gutter
     }
 
-    pub fn set_sender(&self, sender: Sender<Action>) {
-        let code_view_priv = GutterPrivate::from_instance(self);
-        let _ = code_view_priv.sender.set(sender);
-    }
-
-    pub fn set_workspace(&self, workspace: Rc<RefCell<Workspace>>) {
-        let code_view_priv = GutterPrivate::from_instance(self);
-        let _ = code_view_priv.workspace.set(workspace);
+    pub fn set_vadjust(&self, adj: &Adjustment) {
+        let gutter_priv = GutterPrivate::from_instance(self);
+        gutter_priv.vadj.replace(adj.clone());
+        gutter_priv
+            .vadj
+            .borrow()
+            .connect_value_changed(clone!(@weak self as gutter => move |_| {
+                gutter.queue_draw();
+            }));
     }
 
     pub fn buffer_changed(&self) {
         let code_view_priv = GutterPrivate::from_instance(self);
         code_view_priv.buffer_changed(self);
+    }
+}
+
+fn change_to_color(gc: &mut gdk::RGBA, c: Option<Color>) {
+    if let Some(c) = c {
+        gc.red = c.r_f32();
+        gc.green = c.g_f32();
+        gc.blue = c.b_f32();
     }
 }

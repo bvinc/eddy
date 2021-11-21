@@ -13,7 +13,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0"
 cairo-rs = {git = "https://github.com/gtk-rs/gtk-rs-core"}
-env_logger = "0.8"
+env_logger = "0.9"
 eddy-workspace = { path = "../eddy-workspace"}
 gio = {git = "https://github.com/gtk-rs/gtk-rs-core"}
 # glib = {git = "https://github.com/gtk-rs/gtk-rs-core"}
@@ -21,7 +21,7 @@ gio = {git = "https://github.com/gtk-rs/gtk-rs-core"}
 gobject-sys = {git = "https://github.com/gtk-rs/gtk-rs-core"}
 graphene-rs = {git = "https://github.com/gtk-rs/gtk-rs-core"}
 gtk = {package="gtk4", git = "https://github.com/gtk-rs/gtk4-rs"}
-gtk-macros = "0.2"
+gtk-macros = "0.3"
 lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"

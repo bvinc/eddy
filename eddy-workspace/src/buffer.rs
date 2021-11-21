@@ -1335,7 +1335,14 @@ impl Buffer {
         if line_idx >= rope.len_lines() {
             return None;
         }
-        let line = rope.line(line_idx);
+        let mut line = rope.line(line_idx);
+
+        // Take off the newline at the end if one exists.  When we support
+        // multiple line endings, this needs to change.
+        if line.len_chars() > 0 && line.char(line.len_chars() - 1) == '\n' {
+            line = line.slice(0..line.len_chars() - 1);
+        }
+
         let len_lines = rope.len_lines();
         let line_start = rope.line_to_byte(line_idx);
         let line_end = if line_idx == len_lines - 1 {

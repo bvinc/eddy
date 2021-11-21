@@ -57,7 +57,7 @@ impl History {
     /// Performs an undo.  If an undo action was successfully performed,
     /// returns where the selection regions should be changed to.
     pub fn undo(&mut self) -> Option<(Rope, &[Selection])> {
-        if self.history_ix <= 0 {
+        if self.history_ix == 0 {
             return None;
         }
 

@@ -11,17 +11,32 @@ lto = true
 codegen-units = 1
 debug = 1
 
-[patch.crates-io]
-cairo-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-cairo-sys-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-glib = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-glib-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-gobject-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-graphene-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-graphene-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-pango = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-pangocairo = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-pango-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
-gdk4 = { git = "https://github.com/gtk-rs/gtk4-rs" }
-gdk4-sys = { git = "https://github.com/gtk-rs/gtk4-rs" }
+# [patch.crates-io]
+# cairo-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# cairo-sys-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# glib = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# glib-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# gobject-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# graphene-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# graphene-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# pango = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# pangocairo = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# pango-sys = { git = "https://github.com/gtk-rs/gtk-rs-core" }
+# gdk4 = { git = "https://github.com/gtk-rs/gtk4-rs" }
+# gdk4-sys = { git = "https://github.com/gtk-rs/gtk4-rs" }
 
+[patch.'https://github.com/gtk-rs/gtk-rs-core']
+cairo-rs = { path = '/home/brain/src/gtk-rs-core/cairo' }
+cairo-sys-rs = { path = '/home/brain/src/gtk-rs-core/cairo/sys' }
+glib = { path = '/home/brain/src/gtk-rs-core/glib' }
+glib-sys = { path = '/home/brain/src/gtk-rs-core/glib/sys' }
+gobject-sys = { path = '/home/brain/src/gtk-rs-core/glib/gobject-sys' }
+graphene-rs = { path = '/home/brain/src/gtk-rs-core/graphene' }
+graphene-sys = { path = '/home/brain/src/gtk-rs-core/graphene/sys' }
+pango = { path = '/home/brain/src/gtk-rs-core/pango' }
+pangocairo = { path = '/home/brain/src/gtk-rs-core/pangocairo' }
+pango-sys = { path = '/home/brain/src/gtk-rs-core/pango/sys' }
+
+[patch.'https://github.com/gtk-rs/gtk4-rs']
+gtk4 = { path = '/home/brain/src/gtk4-rs/gtk4' }
+gsk4 = { path = '/home/brain/src/gtk4-rs/gsk4' }
