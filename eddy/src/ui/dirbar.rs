@@ -1,4 +1,4 @@
-use anyhow::*;
+use anyhow::bail;
 use glib::Sender;
 use gtk::glib;
 use gtk::glib::subclass;
@@ -189,8 +189,7 @@ pub fn tree_path_to_path<P: AsRef<Path>>(
         let mut stack = vec![];
         let mut ti = tree_store.iter(tp).unwrap();
         loop {
-            let val = tree_store.get(&ti, 0);
-            let s: String = val.get::<'_, String>()?;
+            let s: String = tree_store.get(&ti, 0);
             stack.push(s);
 
             if let Some(parent_ti) = tree_store.iter_parent(&ti) {

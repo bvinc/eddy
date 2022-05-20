@@ -1,14 +1,18 @@
+use super::{CodeViewText, Gutter};
+use crate::app::Action;
+use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan};
 use eddy_workspace::Workspace;
-use gdk::keys::Key;
+use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
 use glib::Sender;
 use gtk::gdk;
 use gtk::glib;
+use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib::subclass, Adjustment};
+use gtk::Adjustment;
 use log::*;
 use lru_cache::LruCache;
 use once_cell::unsync::OnceCell;
@@ -19,10 +23,6 @@ use std::cell::RefCell;
 use std::cmp::{max, min};
 use std::rc::Rc;
 use std::time::Instant;
-
-use super::{CodeViewText, Gutter};
-use crate::app::Action;
-use crate::theme::Theme;
 
 pub struct CodeViewPrivate {
     cvt: OnceCell<CodeViewText>,
@@ -125,7 +125,7 @@ impl CodeView {
             .hadjustment(&imp.hadj)
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vadjustment(&imp.vadj)
-            .vscrollbar_policy(gtk::PolicyType::Always)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_width(360)
             .child(&cvt.clone())
             .build();

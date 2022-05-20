@@ -1,33 +1,34 @@
+use crate::app::Action;
+use crate::color::{pango_to_gdk, text_theme_to_gdk};
+use crate::theme::Theme;
+use crate::ui::{Layout, LayoutItem, LayoutLine};
+use cairo::glib::{ParamSpecEnum, ParamSpecObject};
 use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
-use gdk::keys::Key;
+use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
 use glib::ParamSpec;
 use glib::Sender;
-use gtk::gdk;
 use gtk::glib;
+use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib::subclass, Adjustment};
+use gtk::{gdk, Adjustment};
 use log::*;
 use lru_cache::LruCache;
 use once_cell::sync::Lazy;
 use once_cell::unsync::OnceCell;
-use pango::{Attribute, FontDescription};
+use pango::{AttrColor, Attribute, FontDescription};
 use ropey::RopeSlice;
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
+use std::cell::{Cell, RefMut};
 use std::cmp::{max, min};
 use std::collections::hash_map;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
-
-use crate::app::Action;
-use crate::theme::Theme;
-use crate::ui::{Layout, LayoutItem, LayoutLine};
 
 pub struct CodeViewTextPrivate {
     hadj: RefCell<Adjustment>,
@@ -38,7 +39,6 @@ pub struct CodeViewTextPrivate {
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: usize,
     theme: Theme,
-    layout: Rc<RefCell<Layout>>,
 }
 
 #[glib::object_subclass]
@@ -58,7 +58,6 @@ impl ObjectSubclass for CodeViewTextPrivate {
 
         let hadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
         let vadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
-        let layout = Rc::new(RefCell::new(Layout::new()));
 
         Self {
             hadj,
@@ -69,7 +68,6 @@ impl ObjectSubclass for CodeViewTextPrivate {
             workspace,
             view_id,
             theme,
-            layout,
         }
     }
 }
@@ -78,14 +76,14 @@ impl ObjectImpl for CodeViewTextPrivate {
     fn properties() -> &'static [ParamSpec] {
         static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
             vec![
-                ParamSpec::new_object(
+                ParamSpecObject::new(
                     "hadjustment",
                     "Horizontal Adjustment",
                     "Horizontal `GtkAdjustment` of the scrollable widget",
                     gtk::Adjustment::static_type(),
                     glib::ParamFlags::READWRITE,
                 ),
-                ParamSpec::new_enum(
+                ParamSpecEnum::new(
                     "hscroll-policy",
                     "Horizontal Scroll Policy",
                     "Determines when horizontal scrolling should start",
@@ -93,14 +91,14 @@ impl ObjectImpl for CodeViewTextPrivate {
                     0,
                     glib::ParamFlags::READWRITE,
                 ),
-                ParamSpec::new_object(
+                ParamSpecObject::new(
                     "vadjustment",
                     "Vertical Adjustment",
                     "Vertical `GtkAdjustment` of the scrollable widget",
                     gtk::Adjustment::static_type(),
                     glib::ParamFlags::READWRITE,
                 ),
-                ParamSpec::new_enum(
+                ParamSpecEnum::new(
                     "vscroll-policy",
                     "Vertical Scroll Policy",
                     "Determines when vertical scrolling should start",
@@ -155,7 +153,6 @@ impl ObjectImpl for CodeViewTextPrivate {
         gesture_click.connect_pressed(clone!(@strong obj as this => move |_w, n_press, x, y| {
             this.button_pressed(n_press, x, y);
             this.grab_focus();
-            debug!("cvt clicked");
         }));
         obj.add_controller(&gesture_click);
 
@@ -245,13 +242,7 @@ impl ScrollableImpl for CodeViewTextPrivate {
 }
 
 impl CodeViewTextPrivate {
-    fn buffer_changed(&self, cvt: &CodeViewText) {
-        cvt.queue_draw();
-
-        let mut workspace = self.workspace.get().unwrap().borrow_mut();
-        let view_id = self.view_id;
-        let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
-
+    fn font_height(&self, cvt: &CodeViewText) -> (f64, f64) {
         let pango_ctx = cvt.pango_context();
         let mut font_height = 15.0;
         let mut font_ascent = 15.0;
@@ -259,25 +250,53 @@ impl CodeViewTextPrivate {
             font_height = metrics.height() as f64 / pango::SCALE as f64;
             font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
         }
+        (font_height, font_ascent)
+    }
 
+    fn buffer_changed(&self, cvt: &CodeViewText) {
+        cvt.queue_draw();
+
+        let mut workspace = self.workspace.get().unwrap().borrow_mut();
+        let view_id = self.view_id;
+        let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
+
+        let (font_height, font_ascent) = self.font_height(cvt);
         // let (text_width, text_height) = self.get_text_size(state);
         let text_height = buffer.len_lines() as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
-        let vadj = self.vadj.borrow().clone();
-        let hadj = self.hadj.borrow().clone();
 
-        // update scrollbars to the new text width and height
-        vadj.set_lower(0f64);
-        let upper = if da_height > text_height {
-            da_height
-        } else {
-            text_height
-        };
-        vadj.set_upper(upper);
+        self.scroll_to_carets(&mut workspace, cvt);
 
-        // If the last line was removed, scroll up so we're not overscrolled
-        if vadj.value() + vadj.page_size() > vadj.upper() {
-            vadj.set_value(vadj.upper() - vadj.page_size())
+        self.set_adj_upper(&self.vadj, da_height as f64, text_height);
+    }
+
+    fn scroll_to_carets(&self, workspace: &mut RefMut<Workspace>, cvt: &CodeViewText) {
+        let (buffer, _) = workspace.buffer_and_theme(self.view_id);
+        let (font_height, font_ascent) = self.font_height(cvt);
+        let selections = buffer.selections(self.view_id);
+
+        if selections.len() == 0 {
+            return;
+        }
+        let mut min_line = buffer.char_to_line(selections[0].cursor());
+        let mut max_line = buffer.char_to_line(selections[0].cursor());
+        let mut min_x = 
+        for sel in selections {
+            let line = buffer.char_to_line(sel.cursor());
+            min_line = std::cmp::min(min_line, line);
+            max_line = std::cmp::max(max_line, line);
+        }
+
+        let min = min_line as f64 * font_height;
+        let max = max_line as f64 * font_height + font_height;
+        if max - min < self.vadj.borrow().page_size() {
+            if min < self.vadj.borrow().value() {
+                self.vadj.borrow().set_value(min);
+            } else if max > self.vadj.borrow().value() + self.vadj.borrow().page_size() {
+                self.vadj
+                    .borrow()
+                    .set_value(max - self.vadj.borrow().page_size())
+            }
         }
     }
 
@@ -307,20 +326,20 @@ impl CodeViewTextPrivate {
         // let (text_width, text_height) = self.get_text_size();
         let num_lines = buffer.len_lines();
 
-        let vadj = self.vadj.borrow().clone();
-        let hadj = self.hadj.borrow().clone();
+        let vadj = self.vadj.clone();
+        let hadj = self.hadj.clone();
 
         // We round the values from the scrollbars, because if we don't, rectangles
         // will be antialiased and lines will show up inbetween highlighted lines
         // of text.
-        let vadj_value = f64::round(vadj.value());
-        let hadj_value = f64::round(hadj.value());
+        let vadj_value = f64::round(vadj.borrow().value());
+        let hadj_value = f64::round(hadj.borrow().value());
         trace!(
             "drawing cvt.  height={} width={}, vadj={}, {}",
             da_height,
             da_width,
-            vadj.value(),
-            vadj.upper()
+            vadj.borrow().value(),
+            vadj.borrow().upper()
         );
 
         // TESTING
@@ -338,30 +357,15 @@ impl CodeViewTextPrivate {
         let visible_lines = first_line..last_line;
 
         // Draw background
-        // need to set color to text_theme.background?
-        let mut bg_color = gdk::RGBA::black();
-        bg_color.red = text_theme.bg.r_f32();
-        bg_color.green = text_theme.bg.g_f32();
-        bg_color.blue = text_theme.bg.b_f32();
-
+        let bg_color = text_theme_to_gdk(text_theme.bg);
         let rect_node = gtk::gsk::ColorNode::new(
             &bg_color,
             &graphene::Rect::new(0.0, 0.0, da_width as f32, da_height as f32),
         );
         snapshot.append_node(&rect_node);
 
-        /*
-        // set_source_color(cr, theme.foreground);
-        cr.set_source_rgba(
-            text_theme.fg.r_f64(),
-            text_theme.fg.g_f64(),
-            text_theme.fg.b_f64(),
-            1.0,
-        );
-        */
-
         // Highlight cursor lines
-        let mut highlight_bg_color = gdk::RGBA::white();
+        let mut highlight_bg_color = gdk::RGBA::WHITE;
         change_to_color(&mut highlight_bg_color, Some(text_theme.bg));
         change_to_color(&mut highlight_bg_color, text_theme.line_highlight.bg);
         for i in first_line..last_line {
@@ -390,27 +394,7 @@ impl CodeViewTextPrivate {
             }
         }
 
-        // Highlight cursor lines
-        // for i in first_line..last_line {
-        //     cr.set_source_rgba(0.8, 0.8, 0.8, 1.0);
-        //     if let Some(line) = self.line_cache.get_line(i) {
-        //         if !line.cursor().is_empty() {
-        //             cr.set_source_rgba(0.23, 0.23, 0.23, 1.0);
-        //             cr.rectangle(
-        //                 0f64,
-        //                 font_extents.height * ((i + 1) as f64) - font_extents.ascent - vadj.get_value(),
-        //                 da_width as f64,
-        //                 font_extents.ascent + font_extents.descent,
-        //             );
-        //             cr.fill();
-        //         }
-        //     }
-        // }
-
-        let mut layout = self.layout.borrow_mut();
-        layout.clear();
-        let mut filtered_line = String::new();
-
+        // Loop through the visible lines
         const CURSOR_WIDTH: f64 = 2.0;
         let mut max_width = 0;
         for line_num in visible_lines {
@@ -420,26 +404,14 @@ impl CodeViewTextPrivate {
                 buffer.get_line_with_attributes(view_id, line_num, &text_theme)
             {
                 let text: Cow<str> = line.into();
-                // buffer.filter_line_to_display(&text, &mut filtered_line);
-                // let text = &filtered_line;
 
                 let pango_attrs = self.create_pango_attr_list(&attrs);
                 let line_x = -hadj_value as f32;
                 let line_y =
                     font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
-                // let text: Cow<str> = line.into();
-                // self.append_text_to_snapshot(
-                //     cv,
-                //     text_theme,
-                //     snapshot,
-                //     &text,
-                //     self.create_pango_attr_list(&attrs),
-                //     -hadj_value as f32,
-                //     font_ascent as f32 + font_height as f32 * (i as f32) - vadj_value as f32,
-                // );
-
                 let pango_ctx = cv.pango_context();
 
+                // Itemize
                 let items = pango::itemize_with_base_dir(
                     &pango_ctx,
                     pango::Direction::Ltr,
@@ -450,6 +422,7 @@ impl CodeViewTextPrivate {
                     None,
                 );
 
+                // Loop through the items
                 let mut x_off = 0;
                 for item in items {
                     let mut glyphs = pango::GlyphString::new();
@@ -464,35 +437,23 @@ impl CodeViewTextPrivate {
                     //     dbg!(metrics.height(), metrics.ascent(), metrics.descent());
                     // }
                     let mut bg_color: Option<gdk::RGBA> = None;
-                    let mut fg_color = gdk::RGBA::black();
-                    fg_color.red = text_theme.fg.r_f32();
-                    fg_color.green = text_theme.fg.g_f32();
-                    fg_color.blue = text_theme.fg.b_f32();
+                    let mut fg_color = text_theme_to_gdk(text_theme.fg);
                     // dbg!(color.red, color.green, color.blue);
                     for attr in &item.analysis().extra_attrs() {
                         if attr.type_() == pango::AttrType::Foreground {
                             if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                                let pc = ca.color();
-                                fg_color.red = pc.red() as f32 / 65536.0;
-                                fg_color.green = pc.green() as f32 / 65536.0;
-                                fg_color.blue = pc.blue() as f32 / 65536.0;
+                                fg_color = pango_to_gdk(ca.color());
                             }
                         }
                         if attr.type_() == pango::AttrType::Background {
                             if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                                let pc = ca.color();
-                                let mut bgc = gdk::RGBA::black();
-                                bgc.red = pc.red() as f32 / 65536.0;
-                                bgc.green = pc.green() as f32 / 65536.0;
-                                bgc.blue = pc.blue() as f32 / 65536.0;
-                                bg_color = Some(bgc);
+                                bg_color = Some(pango_to_gdk(ca.color()));
                             }
                         }
                     }
                     pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
                     self.adjust_glyph_tabs(&text, &item, &mut glyphs);
-                    // this calculates width
-                    let width = glyphs.width();
+                    let item_width = glyphs.width();
 
                     // Append text background node to snapshot
                     if let Some(bg_color) = bg_color {
@@ -501,12 +462,11 @@ impl CodeViewTextPrivate {
                             &graphene::Rect::new(
                                 line_x + (x_off as f32 / pango::SCALE as f32) as f32,
                                 line_y - font_ascent as f32,
-                                width as f32 / pango::SCALE as f32,
+                                item_width as f32 / pango::SCALE as f32,
                                 font_height as f32,
                             ),
                         );
                         append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
-                        // snapshot.append_node(&rect_node);
                     }
 
                     // Append text node to snapshot
@@ -520,7 +480,6 @@ impl CodeViewTextPrivate {
                         ),
                     ) {
                         append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
-                        // snapshot.append_node(&clip_node);
                     }
 
                     layout_line.push(LayoutItem {
@@ -529,30 +488,14 @@ impl CodeViewTextPrivate {
                         glyphs,
                         x_off,
                     });
-                    // match layout.entry(line_num) {
-                    //     hash_map::Entry::Occupied(e) => ,
-                    //     hash_map::Entry::Vacant(e) => ,
-                    // }
-                    // layout.entry(line_num).or_insert(vec![]).push(LayoutItem {
-                    //     text: item_text.to_string(),
-                    //     item,
-                    //     glyphs,
-                    //     x_off,
-                    // });
 
-                    // layout.insert(
-                    //     line_num,
-                    //     LayoutItem {
-                    //         text: item_text.to_string(),
-                    //         item,
-                    //         glyphs,
-                    //         x_off,
-                    //     },
-                    // );
-                    x_off += width;
+                    x_off += item_width;
+                    if x_off > max_width {
+                        max_width = x_off;
+                    }
                 }
 
-                // Draw the cursors
+                // Draw the cursors on the line
                 for sel in buffer.selections(view_id) {
                     if buffer.char_to_line(sel.cursor()) != line_num {
                         continue;
@@ -560,12 +503,8 @@ impl CodeViewTextPrivate {
                     let line_byte =
                         buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(line_num);
                     let x = layout_line.index_to_x(line_byte) as f32 / pango::SCALE as f32;
-                    // let x = 10;
 
-                    let mut color = gdk::RGBA::black();
-                    color.red = text_theme.fg.r_f32();
-                    color.green = text_theme.fg.g_f32();
-                    color.blue = text_theme.fg.b_f32();
+                    let color = text_theme_to_gdk(text_theme.fg);
 
                     let rect_node = gtk::gsk::ColorNode::new(
                         &color,
@@ -583,25 +522,28 @@ impl CodeViewTextPrivate {
         }
 
         // Now that we know actual length of the text, adjust the scrollbar properly.
-        // But we need to make sure we don't make the upper value smaller than the current viewport
-        let mut h_upper = f64::from(max_width / pango::SCALE);
-        let cur_h_max = hadj_value + hadj.page_size();
-        if cur_h_max > h_upper {
-            h_upper = cur_h_max;
-        }
-
-        /*
-        if hadj.get_upper() != h_upper {
-            hadj.set_upper(h_upper);
-            // If I don't signal that the value changed, sometimes the overscroll "shadow" will stick
-            // This seems to make sure to tell the viewport that something has changed so it can
-            // reevaluate its need for a scroll shadow.
-            hadj.value_changed();
-        }
-        */
+        let h_upper = f64::from(max_width / pango::SCALE);
+        self.set_adj_upper(&self.hadj, da_width as f64, h_upper);
 
         let draw_end = Instant::now();
         debug!("drawing took {}ms", (draw_end - draw_start).as_millis());
+    }
+
+    fn set_adj_upper(&self, adj: &RefCell<Adjustment>, da_length: f64, content_length: f64) {
+        let adj = adj.borrow();
+        let mut upper: f64 = if da_length > content_length {
+            da_length as f64
+        } else {
+            content_length as f64
+        };
+
+        if adj.value() + adj.page_size() > upper {
+            upper = adj.value() + adj.page_size()
+        }
+
+        if upper != adj.upper() {
+            adj.set_upper(upper);
+        }
     }
 
     /// Creates a pango attr list from eddy attributes
@@ -610,10 +552,10 @@ impl CodeViewTextPrivate {
         for aspan in attr_spans {
             let mut pattr = match aspan.attr {
                 Attr::ForegroundColor(color) => {
-                    Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
+                    AttrColor::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
                 }
                 Attr::BackgroundColor(color) => {
-                    Attribute::new_background(color.r_u16(), color.g_u16(), color.b_u16())
+                    AttrColor::new_background(color.r_u16(), color.g_u16(), color.b_u16())
                 }
             };
             pattr.set_start_index(aspan.start_idx as u32);
@@ -642,10 +584,10 @@ impl CodeViewTextPrivate {
         for aspan in attr_spans {
             let mut pattr = match aspan.attr {
                 Attr::ForegroundColor(color) => {
-                    Attribute::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
+                    AttrColor::new_foreground(color.r_u16(), color.g_u16(), color.b_u16())
                 }
                 Attr::BackgroundColor(color) => {
-                    Attribute::new_background(color.r_u16(), color.g_u16(), color.b_u16())
+                    AttrColor::new_background(color.r_u16(), color.g_u16(), color.b_u16())
                 }
             };
             pattr.set_start_index(aspan.start_idx as u32);
@@ -737,7 +679,6 @@ impl CodeViewText {
 
     fn key_pressed(&self, key: Key, keycode: u32, state: ModifierType) {
         let self_ = CodeViewTextPrivate::from_instance(self);
-        use gdk::keys::constants;
         debug!(
             "key press keyval={:?}, state={:?}, uc={:?}",
             key,
@@ -757,74 +698,74 @@ impl CodeViewText {
         let norm = !alt && !ctrl && !meta;
 
         match key {
-            constants::Delete if norm => buffer.delete_forward(view_id),
-            constants::BackSpace if norm => buffer.delete_backward(view_id),
-            constants::Return | constants::KP_Enter => {
+            Key::Delete if norm => buffer.delete_forward(view_id),
+            Key::BackSpace if norm => buffer.delete_backward(view_id),
+            Key::Return | Key::KP_Enter => {
                 buffer.insert_newline(view_id);
             }
-            constants::Tab if norm && !shift => buffer.insert_tab(view_id),
-            constants::Up if norm && !shift => buffer.move_up(view_id),
-            constants::Down if norm && !shift => buffer.move_down(view_id),
-            constants::Left if norm && !shift => buffer.move_left(view_id),
-            constants::Right if norm && !shift => buffer.move_right(view_id),
-            constants::Up if norm && shift => {
+            Key::Tab if norm && !shift => buffer.insert_tab(view_id),
+            Key::Up if norm && !shift => buffer.move_up(view_id),
+            Key::Down if norm && !shift => buffer.move_down(view_id),
+            Key::Left if norm && !shift => buffer.move_left(view_id),
+            Key::Right if norm && !shift => buffer.move_right(view_id),
+            Key::Up if norm && shift => {
                 buffer.move_up_and_modify_selection(view_id);
             }
-            constants::Down if norm && shift => {
+            Key::Down if norm && shift => {
                 buffer.move_down_and_modify_selection(view_id);
             }
-            constants::Left if norm && shift => {
+            Key::Left if norm && shift => {
                 buffer.move_left_and_modify_selection(view_id);
             }
-            constants::Right if norm && shift => {
+            Key::Right if norm && shift => {
                 buffer.move_right_and_modify_selection(view_id);
             }
-            constants::Left if ctrl && !shift => {
+            Key::Left if ctrl && !shift => {
                 buffer.move_word_left(view_id);
             }
-            constants::Right if ctrl && !shift => {
+            Key::Right if ctrl && !shift => {
                 buffer.move_word_right(view_id);
             }
-            constants::Left if ctrl && shift => {
+            Key::Left if ctrl && shift => {
                 buffer.move_word_left_and_modify_selection(view_id);
             }
-            constants::Right if ctrl && shift => {
+            Key::Right if ctrl && shift => {
                 buffer.move_word_right_and_modify_selection(view_id);
             }
-            constants::Home if norm && !shift => {
+            Key::Home if norm && !shift => {
                 buffer.move_to_left_end_of_line(view_id);
             }
-            constants::End if norm && !shift => {
+            Key::End if norm && !shift => {
                 buffer.move_to_right_end_of_line(view_id);
             }
-            constants::Home if norm && shift => {
+            Key::Home if norm && shift => {
                 buffer.move_to_left_end_of_line_and_modify_selection(view_id);
             }
-            constants::End if norm && shift => {
+            Key::End if norm && shift => {
                 buffer.move_to_right_end_of_line_and_modify_selection(view_id);
             }
-            constants::Home if ctrl && !shift => {
+            Key::Home if ctrl && !shift => {
                 buffer.move_to_beginning_of_document(view_id);
             }
-            constants::End if ctrl && !shift => {
+            Key::End if ctrl && !shift => {
                 buffer.move_to_end_of_document(view_id);
             }
-            constants::Home if ctrl && shift => {
+            Key::Home if ctrl && shift => {
                 buffer.move_to_beginning_of_document_and_modify_selection(view_id);
             }
-            constants::End if ctrl && shift => {
+            Key::End if ctrl && shift => {
                 buffer.move_to_end_of_document_and_modify_selection(view_id);
             }
-            constants::Page_Up if norm && !shift => {
+            Key::Page_Up if norm && !shift => {
                 buffer.page_up(view_id);
             }
-            constants::Page_Down if norm && !shift => {
+            Key::Page_Down if norm && !shift => {
                 buffer.page_down(view_id);
             }
-            constants::Page_Up if norm && shift => {
+            Key::Page_Up if norm && shift => {
                 buffer.page_up_and_modify_selection(view_id);
             }
-            constants::Page_Down if norm && shift => {
+            Key::Page_Down if norm && shift => {
                 buffer.page_down_and_modify_selection(view_id);
             }
             _ => {
@@ -880,8 +821,8 @@ fn append_clipped_node<P: AsRef<gtk::gsk::RenderNode>>(
 
 fn change_to_color(gc: &mut gdk::RGBA, c: Option<Color>) {
     if let Some(c) = c {
-        gc.red = c.r_f32();
-        gc.green = c.g_f32();
-        gc.blue = c.b_f32();
+        gc.set_red(c.r_f32());
+        gc.set_green(c.g_f32());
+        gc.set_blue(c.b_f32());
     }
 }

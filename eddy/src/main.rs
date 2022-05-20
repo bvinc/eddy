@@ -13,6 +13,7 @@
 mod theme;
 // mod widget;
 mod app;
+mod color;
 mod ui;
 
 // use crate::widget::dir_bar::DirBar;

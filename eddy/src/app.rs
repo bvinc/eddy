@@ -1,13 +1,12 @@
 use anyhow::*;
 use eddy_workspace::Workspace;
-use gio::subclass::prelude::ApplicationImpl;
 use gio::ApplicationFlags;
-// use glib::subclass::prelude::*;
 use glib::{subclass, WeakRef};
 use glib::{Receiver, Sender};
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::application::GtkApplicationImpl;
+use gtk::subclass::prelude::ApplicationImpl;
 use gtk::subclass::prelude::*;
 use gtk::{ButtonsType, DialogFlags, MessageDialog, MessageType};
 use log::*;

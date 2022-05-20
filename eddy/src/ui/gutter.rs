@@ -1,6 +1,6 @@
 use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
-use gdk::keys::Key;
+use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
 use glib::Sender;
@@ -187,7 +187,7 @@ impl GutterPrivate {
 
         // Draw background
         // need to set color to text_theme.background?
-        let mut bg_color = gdk::RGBA::white();
+        let mut bg_color = gdk::RGBA::WHITE;
         change_to_color(&mut bg_color, text_theme.gutter.bg);
 
         let rect_node = gtk::gsk::ColorNode::new(
@@ -197,7 +197,7 @@ impl GutterPrivate {
         snapshot.append_node(&rect_node);
 
         // Highlight cursor lines
-        let mut highlight_bg_color = gdk::RGBA::white();
+        let mut highlight_bg_color = gdk::RGBA::WHITE;
         change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
         change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
         for i in first_line..last_line {
@@ -230,7 +230,7 @@ impl GutterPrivate {
         let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
 
         for i in visible_lines {
-            let mut fg_color = gdk::RGBA::black();
+            let mut fg_color = gdk::RGBA::BLACK;
             change_to_color(&mut fg_color, text_theme.gutter.fg);
 
             for sel in buffer.selections(view_id) {
@@ -357,8 +357,8 @@ impl Gutter {
 
 fn change_to_color(gc: &mut gdk::RGBA, c: Option<Color>) {
     if let Some(c) = c {
-        gc.red = c.r_f32();
-        gc.green = c.g_f32();
-        gc.blue = c.b_f32();
+        gc.set_red(c.r_f32());
+        gc.set_green(c.g_f32());
+        gc.set_blue(c.b_f32());
     }
 }

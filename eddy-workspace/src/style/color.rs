@@ -19,6 +19,8 @@ pub struct Color {
 }
 
 impl Color {
+    pub const BLACK: Color = Color { r: 0, g: 0, b: 0 };
+
     pub fn r_u8(&self) -> u8 {
         self.r
     }
