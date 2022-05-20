@@ -257,8 +257,7 @@ impl CodeViewTextPrivate {
         cvt.queue_draw();
 
         let mut workspace = self.workspace.get().unwrap().borrow_mut();
-        let view_id = self.view_id;
-        let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
+        let (buffer, text_theme) = workspace.buffer_and_theme(self.view_id);
 
         let (font_height, font_ascent) = self.font_height(cvt);
         // let (text_width, text_height) = self.get_text_size(state);
@@ -280,7 +279,6 @@ impl CodeViewTextPrivate {
         }
         let mut min_line = buffer.char_to_line(selections[0].cursor());
         let mut max_line = buffer.char_to_line(selections[0].cursor());
-        let mut min_x = 
         for sel in selections {
             let line = buffer.char_to_line(sel.cursor());
             min_line = std::cmp::min(min_line, line);
