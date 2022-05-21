@@ -21,6 +21,7 @@
 "while" @keyword
 
 "#define" @keyword
+"#elif" @keyword
 "#else" @keyword
 "#endif" @keyword
 "#if" @keyword
@@ -33,6 +34,7 @@
 "-" @operator
 "-=" @operator
 "->" @operator
+"=" @operator
 "!=" @operator
 "*" @operator
 "&" @operator

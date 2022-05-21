@@ -1,0 +1,54 @@
+* Tabs are broken drawing the cursor
+  * Tabs are always isolated into their own item, so the item shaping needs to be modified.
+
+* Click to move cursor
+
+
+
+
+* Find and Replace
+* Auto Indent
+  * Compare block level at beginning of last line to the end of last line
+* Save
+  * Make Save action disable if save is not possible
+  * Make can_save that asks if there is a file associated with buffer
+* Save As
+  * Send PathChanged Msg
+  * Update file name in tab
+* Add tree edits to undo history
+  * Apply those edits to the tree-sitter tree
+* Highlighting needs to primary-copy
+* Paste with multiple cursors
+* Know when files are pristine
+* A config system (probably use JSON), user vs workspace?
+* A command pallet?
+* Hover
+* Theme
+  * Active line background
+* Auto-indent
+
+* Do I need a BufferID ?
+
+
+
+* Handle save action
+
+* add a directory sidebar "component"
+* Don't use font_width anywhere, use index_to_x and x_to_index
+* Move font config to the controller
+
+
+* Should I only have a main window, and not an "application"?
+  - I should just make a new application every time.
+
+* ask save on close_all
+
+* preferences dialog
+* Add blocking get on the line cache, make it accessible by the core
+* save dialog start somewhere convenient
+* auto-copy primary after highlight
+
+Known bugs:
+
+* Having the syntec plugin causes all sorts of floods of updates
+* syntec plugin: Hitting space, f, then hitting enter+space really fast, causes panic

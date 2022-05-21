@@ -1,11 +1,13 @@
 ; Special identifiers
 ;--------------------
 
-((identifier) @constant
+([
+    (identifier)
+    (shorthand_property_identifier)
+    (shorthand_property_identifier_pattern)
+ ] @constant
  (#match? @constant "^[A-Z_][A-Z\\d_]+$"))
 
-((shorthand_property_identifier) @constant
- (#match? @constant "^[A-Z_][A-Z\\d_]+$"))
 
 ((identifier) @constructor
  (#match? @constructor "^[A-Z]"))
@@ -58,19 +60,6 @@
 ; Variables
 ;----------
 
-(formal_parameters
-  [
-    (identifier) @variable.parameter
-    (array_pattern
-      (identifier) @variable.parameter)
-    (object_pattern
-      [
-        (pair value: (identifier) @variable.parameter)
-        (shorthand_property_identifier) @variable.parameter
-      ])
-  ]
-)
-
 (identifier) @variable
 
 ; Properties
@@ -110,27 +99,56 @@
 
 [
   ";"
+  "?."
   "."
   ","
 ] @punctuation.delimiter
 
 [
-  "--"
   "-"
+  "--"
   "-="
-  "&&"
   "+"
   "++"
   "+="
+  "*"
+  "*="
+  "**"
+  "**="
+  "/"
+  "/="
+  "%"
+  "%="
   "<"
+  "<="
   "<<"
+  "<<="
   "="
   "=="
   "==="
+  "!"
+  "!="
+  "!=="
   "=>"
   ">"
+  ">="
   ">>"
+  ">>="
+  ">>>"
+  ">>>="
+  "~"
+  "^"
+  "&"
+  "|"
+  "^="
+  "&="
+  "|="
+  "&&"
   "||"
+  "??"
+  "&&="
+  "||="
+  "??="
 ] @operator
 
 [

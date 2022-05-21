@@ -206,7 +206,7 @@ impl LanguageServerClient {
             root_uri,
             initialization_options: None,
             capabilities: client_capabilities,
-            trace: Some(TraceOption::Verbose),
+            trace: Some(TraceValue::Verbose),
             workspace_folders: None,
             client_info: Some(ClientInfo {
                 name: "Eddy".into(),
@@ -318,7 +318,7 @@ impl LanguageServerClient {
             .and_then(|c| c.text_document_sync.as_ref())
         {
             Some(&TextDocumentSyncCapability::Kind(kind)) => kind,
-            _ => TextDocumentSyncKind::Full,
+            _ => TextDocumentSyncKind::FULL,
         }
     }
 }

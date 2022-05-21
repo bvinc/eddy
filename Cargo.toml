@@ -3,7 +3,6 @@ members = [
 	"eddy",
 	"eddy-workspace",
 	"eddy-ts",
-	"eddy-highlight"
 ]
 
 [profile.release]

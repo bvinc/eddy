@@ -1,12 +1,12 @@
 tree-sitter-javascript
 ===========================
 
-[![Build Status](https://travis-ci.org/tree-sitter/tree-sitter-javascript.svg?branch=master)](https://travis-ci.org/tree-sitter/tree-sitter-javascript)
-[![Build status](https://ci.appveyor.com/api/projects/status/42kwnan77rtf8144/branch/master?svg=true)](https://ci.appveyor.com/project/maxbrunsfeld/tree-sitter-javascript/branch/master)
+[![CI Status](https://github.com/tree-sitter/tree-sitter-javascript/actions/workflows/ci.yml/badge.svg)](https://github.com/tree-sitter/tree-sitter-javascript/actions/workflows/ci.yml)
 
-JavaScript grammar for [tree-sitter][].
+JavaScript and JSX grammar for [tree-sitter][]. For TypeScript, see [tree-sitter-typescript][].
 
 [tree-sitter]: https://github.com/tree-sitter/tree-sitter
+[tree-sitter-typescript]: https://github.com/tree-sitter/tree-sitter-typescript
 
 References
 

@@ -1,5 +1,6 @@
 use super::{print_tree, Layer};
 use crate::language::capture::Capture;
+use crate::language::util::RopeTextProvider;
 use eddy_ts::{language, Language, Node, Parser, Query, QueryCursor, Tree};
 use ropey::Rope;
 use std::borrow::Cow;
@@ -86,11 +87,7 @@ impl Layer for RustLayer {
             }
 
             let mut cursor = QueryCursor::new();
-            let captures = cursor.captures(&query, tree.root_node(), move |n: Node| {
-                rope_bytes_to_str(&rope, n.byte_range())
-                    .to_owned()
-                    .to_string()
-            });
+            let captures = cursor.captures(&query, tree.root_node(), RopeTextProvider::new(rope));
             for cap in captures {
                 for c in cap.0.captures {
                     if let Some(capture) = self.capture(c.index as usize) {

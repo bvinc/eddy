@@ -1,8 +1,7 @@
 target
 *~
-/big.txt
+/test-files
 /rls
-/TODO
 /test
 /fonts/.uuid
 /.stignore

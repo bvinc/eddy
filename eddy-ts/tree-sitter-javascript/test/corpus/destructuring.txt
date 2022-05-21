@@ -2,7 +2,7 @@
 Object destructuring assignments
 ============================================
 
-({a, b} = object);
+({a, b: c.d, ...e[f]} = object);
 let {a, b, ...c} = object
 const {a, b: {c, d}} = object
 
@@ -11,23 +11,26 @@ const {a, b: {c, d}} = object
 (program
   (expression_statement (parenthesized_expression (assignment_expression
     (object_pattern
-      (shorthand_property_identifier)
-      (shorthand_property_identifier))
+      (shorthand_property_identifier_pattern)
+      (pair_pattern
+        (property_identifier)
+        (member_expression (identifier) (property_identifier)))
+      (rest_pattern (subscript_expression (identifier) (identifier))))
     (identifier))))
   (lexical_declaration (variable_declarator
     (object_pattern
-      (shorthand_property_identifier)
-      (shorthand_property_identifier)
-      (spread_element (identifier)))
+      (shorthand_property_identifier_pattern)
+      (shorthand_property_identifier_pattern)
+      (rest_pattern (identifier)))
     (identifier)))
   (lexical_declaration (variable_declarator
     (object_pattern
-      (shorthand_property_identifier)
-      (pair
+      (shorthand_property_identifier_pattern)
+      (pair_pattern
         (property_identifier)
-        (object
-          (shorthand_property_identifier)
-          (shorthand_property_identifier))))
+        (object_pattern
+          (shorthand_property_identifier_pattern)
+          (shorthand_property_identifier_pattern))))
     (identifier))))
 
 ============================================
@@ -41,15 +44,15 @@ function a ({b, c}, {d}) {}
 (program
   (function_declaration (identifier)
     (formal_parameters
-      (object_pattern (shorthand_property_identifier) (shorthand_property_identifier))
-      (object_pattern (shorthand_property_identifier)))
+      (object_pattern (shorthand_property_identifier_pattern) (shorthand_property_identifier_pattern))
+      (object_pattern (shorthand_property_identifier_pattern)))
     (statement_block)))
 
 ============================================
 Array destructuring assignments
 ============================================
 
-[a, b] = array;
+[a, b.c, ...c[d]] = array;
 [a, b, ...c] = array;
 [,, c,, d,] = array;
 
@@ -59,13 +62,14 @@ Array destructuring assignments
   (expression_statement (assignment_expression
     (array_pattern
       (identifier)
-      (identifier))
+      (member_expression (identifier) (property_identifier))
+      (rest_pattern (subscript_expression (identifier) (identifier))))
     (identifier)))
   (expression_statement (assignment_expression
     (array_pattern
       (identifier)
       (identifier)
-      (spread_element (identifier)))
+      (rest_pattern (identifier)))
     (identifier)))
   (expression_statement (assignment_expression
     (array_pattern
@@ -77,18 +81,31 @@ Array destructuring assignments
 Object destructuring patterns w/ default values
 ================================================
 
+let {a: b = c} = object;
+for await (var {a: {b} = object} of asyncIter) {}
 function a({b = true}, [c, d = false]) {}
 function b({c} = {}) {}
 
 ---
 
 (program
-  (function_declaration (identifier)
-    (formal_parameters
-      (object_pattern (assignment_pattern (shorthand_property_identifier) (true)))
-      (array_pattern (identifier) (assignment_expression (identifier) (false))))
+  (lexical_declaration (variable_declarator
+    (object_pattern (pair_pattern
+      (property_identifier)
+      (assignment_pattern (identifier) (identifier))))
+    (identifier)))
+  (for_in_statement
+    (object_pattern (pair_pattern
+      (property_identifier)
+      (assignment_pattern (object_pattern (shorthand_property_identifier_pattern)) (identifier))))
+    (identifier)
     (statement_block))
   (function_declaration (identifier)
     (formal_parameters
-      (assignment_pattern (object_pattern (shorthand_property_identifier)) (object)))
+      (object_pattern (object_assignment_pattern (shorthand_property_identifier_pattern) (true)))
+      (array_pattern (identifier) (assignment_pattern (identifier) (false))))
+    (statement_block))
+  (function_declaration (identifier)
+    (formal_parameters
+      (assignment_pattern (object_pattern (shorthand_property_identifier_pattern)) (object)))
     (statement_block)))
