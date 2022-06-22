@@ -1,3 +1,12 @@
+* Don't call buffer_modified after just resizing the window
+* auto scroll left and right when the cursor moves out of the viewport
+* Mouse click move cursor
+* tab should not render an error
+  - Need to edit GTK
+* up and down don't save horizontal in a graphically correct way
+  - doesn't even work with non-fixed width fonts
+* highlighting a line should include a space for the newline
+
 * Tabs are broken drawing the cursor
   * Tabs are always isolated into their own item, so the item shaping needs to be modified.
 
@@ -47,8 +56,3 @@
 * Add blocking get on the line cache, make it accessible by the core
 * save dialog start somewhere convenient
 * auto-copy primary after highlight
-
-Known bugs:
-
-* Having the syntec plugin causes all sorts of floods of updates
-* syntec plugin: Hitting space, f, then hitting enter+space really fast, causes panic
