@@ -147,7 +147,7 @@ impl CodeView {
             let sender2 = imp.sender.get().unwrap().clone();
             let buffer = workspace.buffer(imp.view_id);
             let view_id = imp.view_id;
-            buffer.connect_update(move || {
+            buffer.borrow_mut().connect_update(move || {
                 if let Err(err) = sender2.send(Action::BufferChange { view_id }) {
                     error!("buffer changed: {}", err);
                 };

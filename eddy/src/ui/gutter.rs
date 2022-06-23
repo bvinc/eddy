@@ -134,7 +134,7 @@ impl GutterPrivate {
         let mut workspace = self.workspace.get().unwrap().borrow_mut();
         let view_id = self.view_id;
         let (buffer, _) = workspace.buffer_and_theme(view_id);
-        let max_line_num = buffer.len_lines();
+        let max_line_num = buffer.borrow().len_lines();
         self.gutter_nchars.set(format!("{}", max_line_num).len());
 
         gutter.queue_draw();
@@ -154,7 +154,7 @@ impl GutterPrivate {
         let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
         // let (text_width, text_height) = self.get_text_size();
-        let num_lines = buffer.len_lines();
+        let num_lines = buffer.borrow().len_lines();
 
         let vadj = self.vadj.borrow().clone();
 
@@ -201,8 +201,8 @@ impl GutterPrivate {
         change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
         change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
         for i in first_line..last_line {
-            for sel in buffer.selections(view_id) {
-                if buffer.char_to_line(sel.cursor()) != i {
+            for sel in buffer.borrow().selections(view_id) {
+                if buffer.borrow().char_to_line(sel.cursor()) != i {
                     continue;
                 }
 
@@ -233,8 +233,8 @@ impl GutterPrivate {
             let mut fg_color = gdk::RGBA::BLACK;
             change_to_color(&mut fg_color, text_theme.gutter.fg);
 
-            for sel in buffer.selections(view_id) {
-                if buffer.char_to_line(sel.cursor()) != i {
+            for sel in buffer.borrow().selections(view_id) {
+                if buffer.borrow().char_to_line(sel.cursor()) != i {
                     continue;
                 }
                 change_to_color(&mut fg_color, text_theme.gutter_line_highlight.fg);
@@ -242,7 +242,10 @@ impl GutterPrivate {
             }
 
             // Keep track of the starting x position
-            if let Some((_, _)) = buffer.get_line_with_attributes(view_id, i, &text_theme) {
+            if let Some((_, _)) = buffer
+                .borrow()
+                .get_line_with_attributes(view_id, i, &text_theme)
+            {
                 self.append_text_to_snapshot(
                     cv,
                     fg_color,

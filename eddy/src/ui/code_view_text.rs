@@ -253,6 +253,8 @@ impl CodeViewTextPrivate {
         (font_height, font_ascent)
     }
 
+    // fn get_workspace() -> Rc<RefCell<Workspace>> {}
+
     fn buffer_changed(&self, cvt: &CodeViewText) {
         cvt.queue_draw();
 
@@ -261,7 +263,7 @@ impl CodeViewTextPrivate {
 
         let (font_height, font_ascent) = self.font_height(cvt);
         // let (text_width, text_height) = self.get_text_size(state);
-        let text_height = buffer.len_lines() as f64 * font_height;
+        let text_height = buffer.borrow().len_lines() as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
         self.scroll_to_carets(&mut workspace, cvt);
@@ -272,6 +274,7 @@ impl CodeViewTextPrivate {
     fn scroll_to_carets(&self, workspace: &mut RefMut<Workspace>, cvt: &CodeViewText) {
         let (buffer, _) = workspace.buffer_and_theme(self.view_id);
         let (font_height, font_ascent) = self.font_height(cvt);
+        let buffer = buffer.borrow();
         let selections = buffer.selections(self.view_id);
 
         if selections.len() == 0 {
@@ -322,7 +325,7 @@ impl CodeViewTextPrivate {
         // font_options.set_hint_style(HintStyle::Full);
 
         // let (text_width, text_height) = self.get_text_size();
-        let num_lines = buffer.len_lines();
+        let num_lines = buffer.borrow().len_lines();
 
         let vadj = self.vadj.clone();
         let hadj = self.hadj.clone();
@@ -367,8 +370,8 @@ impl CodeViewTextPrivate {
         change_to_color(&mut highlight_bg_color, Some(text_theme.bg));
         change_to_color(&mut highlight_bg_color, text_theme.line_highlight.bg);
         for i in first_line..last_line {
-            for sel in buffer.selections(view_id) {
-                if buffer.char_to_line(sel.cursor()) != i {
+            for sel in buffer.borrow().selections(view_id) {
+                if buffer.borrow().char_to_line(sel.cursor()) != i {
                     continue;
                 }
 
@@ -399,7 +402,9 @@ impl CodeViewTextPrivate {
             let mut layout_line = LayoutLine::new();
             // Keep track of the starting x position
             if let Some((line, attrs)) =
-                buffer.get_line_with_attributes(view_id, line_num, &text_theme)
+                buffer
+                    .borrow()
+                    .get_line_with_attributes(view_id, line_num, &text_theme)
             {
                 let text: Cow<str> = line.into();
 
@@ -494,12 +499,12 @@ impl CodeViewTextPrivate {
                 }
 
                 // Draw the cursors on the line
-                for sel in buffer.selections(view_id) {
-                    if buffer.char_to_line(sel.cursor()) != line_num {
+                for sel in buffer.borrow().selections(view_id) {
+                    if buffer.borrow().char_to_line(sel.cursor()) != line_num {
                         continue;
                     }
-                    let line_byte =
-                        buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(line_num);
+                    let line_byte = buffer.borrow().char_to_byte(sel.cursor())
+                        - buffer.borrow().line_to_byte(line_num);
                     let x = layout_line.index_to_x(line_byte) as f32 / pango::SCALE as f32;
 
                     let color = text_theme_to_gdk(text_theme.fg);
@@ -696,81 +701,93 @@ impl CodeViewText {
         let norm = !alt && !ctrl && !meta;
 
         match key {
-            Key::Delete if norm => buffer.delete_forward(view_id),
-            Key::BackSpace if norm => buffer.delete_backward(view_id),
+            Key::Delete if norm => buffer.borrow_mut().delete_forward(view_id),
+            Key::BackSpace if norm => buffer.borrow_mut().delete_backward(view_id),
             Key::Return | Key::KP_Enter => {
-                buffer.insert_newline(view_id);
+                buffer.borrow_mut().insert_newline(view_id);
             }
-            Key::Tab if norm && !shift => buffer.insert_tab(view_id),
-            Key::Up if norm && !shift => buffer.move_up(view_id),
-            Key::Down if norm && !shift => buffer.move_down(view_id),
-            Key::Left if norm && !shift => buffer.move_left(view_id),
-            Key::Right if norm && !shift => buffer.move_right(view_id),
+            Key::Tab if norm && !shift => buffer.borrow_mut().insert_tab(view_id),
+            Key::Up if norm && !shift => buffer.borrow_mut().move_up(view_id),
+            Key::Down if norm && !shift => buffer.borrow_mut().move_down(view_id),
+            Key::Left if norm && !shift => buffer.borrow_mut().move_left(view_id),
+            Key::Right if norm && !shift => buffer.borrow_mut().move_right(view_id),
             Key::Up if norm && shift => {
-                buffer.move_up_and_modify_selection(view_id);
+                buffer.borrow_mut().move_up_and_modify_selection(view_id);
             }
             Key::Down if norm && shift => {
-                buffer.move_down_and_modify_selection(view_id);
+                buffer.borrow_mut().move_down_and_modify_selection(view_id);
             }
             Key::Left if norm && shift => {
-                buffer.move_left_and_modify_selection(view_id);
+                buffer.borrow_mut().move_left_and_modify_selection(view_id);
             }
             Key::Right if norm && shift => {
-                buffer.move_right_and_modify_selection(view_id);
+                buffer.borrow_mut().move_right_and_modify_selection(view_id);
             }
             Key::Left if ctrl && !shift => {
-                buffer.move_word_left(view_id);
+                buffer.borrow_mut().move_word_left(view_id);
             }
             Key::Right if ctrl && !shift => {
-                buffer.move_word_right(view_id);
+                buffer.borrow_mut().move_word_right(view_id);
             }
             Key::Left if ctrl && shift => {
-                buffer.move_word_left_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_word_left_and_modify_selection(view_id);
             }
             Key::Right if ctrl && shift => {
-                buffer.move_word_right_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_word_right_and_modify_selection(view_id);
             }
             Key::Home if norm && !shift => {
-                buffer.move_to_left_end_of_line(view_id);
+                buffer.borrow_mut().move_to_left_end_of_line(view_id);
             }
             Key::End if norm && !shift => {
-                buffer.move_to_right_end_of_line(view_id);
+                buffer.borrow_mut().move_to_right_end_of_line(view_id);
             }
             Key::Home if norm && shift => {
-                buffer.move_to_left_end_of_line_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_to_left_end_of_line_and_modify_selection(view_id);
             }
             Key::End if norm && shift => {
-                buffer.move_to_right_end_of_line_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_to_right_end_of_line_and_modify_selection(view_id);
             }
             Key::Home if ctrl && !shift => {
-                buffer.move_to_beginning_of_document(view_id);
+                buffer.borrow_mut().move_to_beginning_of_document(view_id);
             }
             Key::End if ctrl && !shift => {
-                buffer.move_to_end_of_document(view_id);
+                buffer.borrow_mut().move_to_end_of_document(view_id);
             }
             Key::Home if ctrl && shift => {
-                buffer.move_to_beginning_of_document_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_to_beginning_of_document_and_modify_selection(view_id);
             }
             Key::End if ctrl && shift => {
-                buffer.move_to_end_of_document_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .move_to_end_of_document_and_modify_selection(view_id);
             }
             Key::Page_Up if norm && !shift => {
-                buffer.page_up(view_id);
+                buffer.borrow_mut().page_up(view_id);
             }
             Key::Page_Down if norm && !shift => {
-                buffer.page_down(view_id);
+                buffer.borrow_mut().page_down(view_id);
             }
             Key::Page_Up if norm && shift => {
-                buffer.page_up_and_modify_selection(view_id);
+                buffer.borrow_mut().page_up_and_modify_selection(view_id);
             }
             Key::Page_Down if norm && shift => {
-                buffer.page_down_and_modify_selection(view_id);
+                buffer.borrow_mut().page_down_and_modify_selection(view_id);
             }
             _ => {
                 if let Some(ch) = ch {
                     match ch {
                         'a' if ctrl => {
-                            buffer.select_all(view_id);
+                            buffer.borrow_mut().select_all(view_id);
                         }
                         'c' if ctrl => {
                             // self.do_copy(state);
@@ -788,14 +805,14 @@ impl CodeViewText {
                             // self.do_cut(state);
                         }
                         'z' if ctrl => {
-                            buffer.undo(view_id);
+                            buffer.borrow_mut().undo(view_id);
                         }
                         'Z' if ctrl && shift => {
-                            buffer.redo(view_id);
+                            buffer.borrow_mut().redo(view_id);
                         }
                         c if (norm) && c >= '\u{0020}' => {
                             debug!("inserting key");
-                            buffer.insert(view_id, &c.to_string());
+                            buffer.borrow_mut().insert(view_id, &c.to_string());
                         }
                         _ => {
                             debug!("unhandled key: {:?}", ch);

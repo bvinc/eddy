@@ -313,15 +313,4 @@ impl Workspace {
             .borrow_mut()
             .drag(view_id, line_idx, line_byte_idx);
     }
-
-    pub fn get_line_with_attributes(
-        &mut self,
-        view_id: ViewId,
-        line_idx: usize,
-    ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
-        let (buffer, theme) = self.buffer_and_theme(view_id);
-        buffer
-            .borrow_mut()
-            .get_line_with_attributes(line_idx, view_id, &theme)
-    }
 }
