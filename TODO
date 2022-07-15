@@ -1,7 +1,10 @@
-* Don't call buffer_modified after just resizing the window
-* auto scroll left and right when the cursor moves out of the viewport
-* Mouse click move cursor
-* tab should not render an error
+
+
+* tab should not render an arrow
+  - Need to edit GTK to allow changing the glyph
+*  pango_glyph_string_get_width is &mut and it shouldn't be
+  - Need to edit GTK
+*  TextNode::new is &mut to glyphs and shouldn't me
   - Need to edit GTK
 * up and down don't save horizontal in a graphically correct way
   - doesn't even work with non-fixed width fonts
@@ -9,9 +12,6 @@
 
 * Tabs are broken drawing the cursor
   * Tabs are always isolated into their own item, so the item shaping needs to be modified.
-
-* Click to move cursor
-
 
 
 

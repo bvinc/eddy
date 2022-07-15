@@ -134,8 +134,11 @@ impl Workspace {
         self.buffers.get_mut(&view_id).unwrap().clone()
     }
 
-    pub fn buffer_and_theme(&mut self, view_id: usize) -> (Rc<RefCell<Buffer>>, &Theme) {
-        (self.buffers.get_mut(&view_id).unwrap().clone(), &self.theme)
+    pub fn buffer_and_theme(&self, view_id: usize) -> (Rc<RefCell<Buffer>>, Theme) {
+        (
+            self.buffers.get(&view_id).unwrap().clone(),
+            self.theme.clone(),
+        )
     }
 
     pub fn save(&mut self, view_id: usize) -> Result<(), anyhow::Error> {

@@ -4,7 +4,7 @@ use crate::theme::Theme;
 use crate::ui::{Layout, LayoutItem, LayoutLine};
 use cairo::glib::{ParamSpecEnum, ParamSpecObject};
 use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::Workspace;
+use eddy_workspace::{Buffer, Workspace};
 use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
@@ -29,6 +29,8 @@ use std::collections::hash_map;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
+
+const CURSOR_WIDTH: f64 = 2.0;
 
 pub struct CodeViewTextPrivate {
     hadj: RefCell<Adjustment>,
@@ -150,9 +152,9 @@ impl ObjectImpl for CodeViewTextPrivate {
         dbg!(obj.valign(), obj.halign());
 
         let gesture_click = gtk::GestureClick::new();
+        gesture_click.set_button(1);
         gesture_click.connect_pressed(clone!(@strong obj as this => move |_w, n_press, x, y| {
-            this.button_pressed(n_press, x, y);
-            this.grab_focus();
+            this.left_button_pressed(n_press, x, y);
         }));
         obj.add_controller(&gesture_click);
 
@@ -230,7 +232,7 @@ impl WidgetImpl for CodeViewTextPrivate {
         let hadj = self.hadj.borrow().clone();
         hadj.set_page_size(f64::from(w));
 
-        self.buffer_changed(obj);
+        self.reset_vadj_upper(obj);
     }
 }
 impl BoxImpl for CodeViewTextPrivate {}
@@ -253,52 +255,178 @@ impl CodeViewTextPrivate {
         (font_height, font_ascent)
     }
 
+    fn get_buffer(&self) -> Rc<RefCell<Buffer>> {
+        let workspace = self.workspace.get().unwrap();
+        let (buffer, _) = workspace.borrow_mut().buffer_and_theme(self.view_id);
+        buffer
+    }
+
+    fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
+        let workspace = self.workspace.get().unwrap();
+        let (buffer, theme) = workspace.borrow_mut().buffer_and_theme(self.view_id);
+        (buffer, theme)
+    }
     // fn get_workspace() -> Rc<RefCell<Workspace>> {}
 
-    fn buffer_changed(&self, cvt: &CodeViewText) {
-        cvt.queue_draw();
+    fn reset_vadj_upper(&self, cvt: &CodeViewText) {
+        let buffer = self.get_buffer();
 
-        let mut workspace = self.workspace.get().unwrap().borrow_mut();
-        let (buffer, text_theme) = workspace.buffer_and_theme(self.view_id);
-
-        let (font_height, font_ascent) = self.font_height(cvt);
+        let (font_height, _) = self.font_height(cvt);
         // let (text_width, text_height) = self.get_text_size(state);
         let text_height = buffer.borrow().len_lines() as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
-        self.scroll_to_carets(&mut workspace, cvt);
-
         self.set_adj_upper(&self.vadj, da_height as f64, text_height);
     }
 
-    fn scroll_to_carets(&self, workspace: &mut RefMut<Workspace>, cvt: &CodeViewText) {
-        let (buffer, _) = workspace.buffer_and_theme(self.view_id);
-        let (font_height, font_ascent) = self.font_height(cvt);
+    fn buffer_changed(&self, cvt: &CodeViewText) {
+        cvt.queue_draw();
+
+        self.reset_vadj_upper(cvt);
+        self.scroll_to_carets(cvt);
+    }
+
+    fn scroll_to_carets(&self, cvt: &CodeViewText) {
+        let buffer = self.get_buffer();
+        let (font_height, _) = self.font_height(cvt);
         let buffer = buffer.borrow();
         let selections = buffer.selections(self.view_id);
 
         if selections.len() == 0 {
             return;
         }
-        let mut min_line = buffer.char_to_line(selections[0].cursor());
-        let mut max_line = buffer.char_to_line(selections[0].cursor());
+
+        let mut min_x = None;
+        let mut max_x = None;
+        let mut min_y = None;
+        let mut max_y = None;
         for sel in selections {
             let line = buffer.char_to_line(sel.cursor());
-            min_line = std::cmp::min(min_line, line);
-            max_line = std::cmp::max(max_line, line);
+            let line_min_y = line as f64 * font_height;
+            let line_max_y = line as f64 * font_height + font_height;
+            min_y = Some(line_min_y.min(min_y.unwrap_or(line_min_y)));
+            max_y = Some(line_max_y.max(max_y.unwrap_or(line_max_y)));
+
+            let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(line);
+            let layout_line = self.make_layout_line(cvt, line);
+            let x = layout_line.index_to_x(line_byte) as f64 / pango::SCALE as f64;
+            let cur_min_x = x;
+            let cur_max_x = x + CURSOR_WIDTH;
+            min_x = Some(cur_min_x.min(min_x.unwrap_or(cur_min_x)));
+            max_x = Some(cur_max_x.max(max_x.unwrap_or(cur_max_x)));
         }
 
-        let min = min_line as f64 * font_height;
-        let max = max_line as f64 * font_height + font_height;
-        if max - min < self.vadj.borrow().page_size() {
-            if min < self.vadj.borrow().value() {
-                self.vadj.borrow().set_value(min);
-            } else if max > self.vadj.borrow().value() + self.vadj.borrow().page_size() {
-                self.vadj
-                    .borrow()
-                    .set_value(max - self.vadj.borrow().page_size())
+        // If the cursors can fit on the screen
+        if let (Some(min_x), Some(max_x), Some(min_y), Some(max_y)) = (min_x, max_x, min_y, max_y) {
+            if max_x - min_x < self.hadj.borrow().page_size()
+                && max_y - min_y < self.vadj.borrow().page_size()
+            {
+                // If we need to scroll up/down
+                if min_y < self.vadj.borrow().value() {
+                    self.vadj.borrow().set_value(min_y);
+                } else if max_y > self.vadj.borrow().value() + self.vadj.borrow().page_size() {
+                    self.vadj
+                        .borrow()
+                        .set_value(max_y - self.vadj.borrow().page_size())
+                }
+
+                // If we need to scroll left/right
+                if min_x < self.hadj.borrow().value() {
+                    self.hadj.borrow().set_value(min_x);
+                } else if max_x > self.hadj.borrow().value() + self.hadj.borrow().page_size() {
+                    self.hadj
+                        .borrow()
+                        .set_value(max_x - self.hadj.borrow().page_size())
+                }
             }
         }
+    }
+
+    fn make_layout_line(&self, cvt: &CodeViewText, line_num: usize) -> LayoutLine {
+        let (buffer, text_theme) = self.get_buffer_and_theme();
+        let mut layout_line = LayoutLine::new();
+        // Keep track of the starting x position
+        if let Some((line, attrs)) =
+            buffer
+                .borrow()
+                .get_line_with_attributes(self.view_id, line_num, &text_theme)
+        {
+            let text: Cow<str> = line.into();
+
+            let pango_attrs = self.create_pango_attr_list(&attrs);
+            let pango_ctx = cvt.pango_context();
+
+            // Itemize
+            let items = pango::itemize_with_base_dir(
+                &pango_ctx,
+                pango::Direction::Ltr,
+                &text,
+                0,
+                text.len() as i32,
+                &pango_attrs,
+                None,
+            );
+
+            // Loop through the items
+            let mut x_off = 0;
+            for item in items {
+                let mut glyphs = pango::GlyphString::new();
+                let item_text = unsafe {
+                    std::str::from_utf8_unchecked(
+                        &text.as_bytes()[item.offset() as usize
+                            ..item.offset() as usize + item.length() as usize],
+                    )
+                };
+
+                pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
+                self.adjust_glyph_tabs(&text, &item, &mut glyphs);
+                let width = glyphs.width();
+
+                layout_line.push(LayoutItem {
+                    text: item_text.to_string(),
+                    inner: item,
+                    glyphs,
+                    x_off,
+                    width,
+                });
+
+                x_off += width;
+            }
+        }
+        layout_line
+    }
+
+    fn gesture_point_select(&self, cvt: &CodeViewText, x: f64, y: f64) {
+        let view_id = self.view_id;
+        let (buffer, text_theme) = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer_and_theme(view_id);
+        // We round the values from the scrollbars, because if we don't, rectangles
+        // will be antialiased and lines will show up inbetween highlighted lines
+        // of text.
+        let vadj_value = f64::round(self.vadj.borrow().value());
+        let hadj_value = f64::round(self.hadj.borrow().value());
+
+        // TESTING
+        let pango_ctx = cvt.pango_context();
+        let mut font_height = 15.0;
+        let mut font_ascent = 15.0;
+        if let Some(metrics) = pango_ctx.metrics(None, None) {
+            font_height = metrics.height() as f64 / pango::SCALE as f64;
+            font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
+        }
+
+        let line = ((vadj_value + y) / font_height) as usize;
+        // let line_byte = buffer.borrow().char_to_byte(sel.cursor()) - buffer.line_to_byte(line);
+        let layout_line = self.make_layout_line(cvt, line);
+        let idx = layout_line.x_to_index(x as i32);
+        dbg!(line, idx);
+        buffer
+            .borrow_mut()
+            .gesture_point_select(self.view_id, line, idx);
     }
 
     fn handle_draw(&self, cv: &CodeViewText, snapshot: &gtk::Snapshot) {
@@ -314,9 +442,13 @@ impl CodeViewTextPrivate {
         let da_width = cv.allocated_width();
         let da_height = cv.allocated_height();
 
-        let mut workspace = self.workspace.get().unwrap().borrow_mut();
         let view_id = self.view_id;
-        let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
+        let (buffer, text_theme) = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer_and_theme(view_id);
 
         //debug!("Drawing");
         // cr.select_font_face("Mono", ::cairo::enums::FontSlant::Normal, ::cairo::enums::FontWeight::Normal);
@@ -396,7 +528,6 @@ impl CodeViewTextPrivate {
         }
 
         // Loop through the visible lines
-        const CURSOR_WIDTH: f64 = 2.0;
         let mut max_width = 0;
         for line_num in visible_lines {
             let mut layout_line = LayoutLine::new();
@@ -414,34 +545,19 @@ impl CodeViewTextPrivate {
                     font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
                 let pango_ctx = cv.pango_context();
 
-                // Itemize
-                let items = pango::itemize_with_base_dir(
-                    &pango_ctx,
-                    pango::Direction::Ltr,
-                    &text,
-                    0,
-                    text.len() as i32,
-                    &pango_attrs,
-                    None,
-                );
-
+                let mut layout_line = self.make_layout_line(cv, line_num);
                 // Loop through the items
-                let mut x_off = 0;
-                for item in items {
-                    let mut glyphs = pango::GlyphString::new();
+                for item in &mut layout_line.items {
                     let item_text = unsafe {
                         std::str::from_utf8_unchecked(
                             &text.as_bytes()[item.offset() as usize
                                 ..item.offset() as usize + item.length() as usize],
                         )
                     };
-                    // dbg!(item_text);
-                    // if let Some(metrics) = item.analysis().font().metrics(None) {
-                    //     dbg!(metrics.height(), metrics.ascent(), metrics.descent());
-                    // }
+
                     let mut bg_color: Option<gdk::RGBA> = None;
                     let mut fg_color = text_theme_to_gdk(text_theme.fg);
-                    // dbg!(color.red, color.green, color.blue);
+
                     for attr in &item.analysis().extra_attrs() {
                         if attr.type_() == pango::AttrType::Foreground {
                             if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
@@ -454,18 +570,15 @@ impl CodeViewTextPrivate {
                             }
                         }
                     }
-                    pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
-                    self.adjust_glyph_tabs(&text, &item, &mut glyphs);
-                    let item_width = glyphs.width();
 
                     // Append text background node to snapshot
                     if let Some(bg_color) = bg_color {
                         let rect_node = gtk::gsk::ColorNode::new(
                             &bg_color,
                             &graphene::Rect::new(
-                                line_x + (x_off as f32 / pango::SCALE as f32) as f32,
+                                line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
                                 line_y - font_ascent as f32,
-                                item_width as f32 / pango::SCALE as f32,
+                                item.width as f32 / pango::SCALE as f32,
                                 font_height as f32,
                             ),
                         );
@@ -475,26 +588,18 @@ impl CodeViewTextPrivate {
                     // Append text node to snapshot
                     if let Some(text_node) = gtk::gsk::TextNode::new(
                         &item.analysis().font(),
-                        &mut glyphs,
+                        &mut item.glyphs,
                         &fg_color,
                         &graphene::Point::new(
-                            line_x + (x_off as f32 / pango::SCALE as f32) as f32,
+                            line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
                             line_y,
                         ),
                     ) {
                         append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
                     }
 
-                    layout_line.push(LayoutItem {
-                        text: item_text.to_string(),
-                        item,
-                        glyphs,
-                        x_off,
-                    });
-
-                    x_off += item_width;
-                    if x_off > max_width {
-                        max_width = x_off;
+                    if item.x_off > max_width {
+                        max_width = item.x_off;
                     }
                 }
 
@@ -678,7 +783,45 @@ impl CodeViewText {
         code_view_priv.buffer_changed(self);
     }
 
-    fn button_pressed(&self, n_pressed: i32, x: f64, y: f64) {}
+    fn left_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {
+        self.grab_focus();
+        let self_ = CodeViewTextPrivate::from_instance(self);
+
+        // let (col, line) = { self.da_px_to_cell(&main_state, x, y) };
+
+        // if eb.get_state().contains(ModifierType::SHIFT_MASK) {
+        //     self_.gesture_range_select()
+        //     self.controller
+        //         .borrow()
+        //         .core()
+        //         .gesture_range_select(&self.view_id, line, col);
+        // } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
+        //     self.controller
+        //         .borrow()
+        //         .core()
+        //         .gesture_toggle_sel(&self.view_id, line, col);
+        // } else if eb.get_event_type() == EventType::DoubleButtonPress {
+        //     self.controller
+        //         .borrow()
+        //         .core()
+        //         .gesture_word_select(&self.view_id, line, col);
+        // } else if eb.get_event_type() == EventType::TripleButtonPress {
+        //     self.controller
+        //         .borrow()
+        //         .core()
+        //         .gesture_line_select(&self.view_id, line, col);
+        // } else {
+        self_.gesture_point_select(self, x, y);
+        // }
+    }
+
+    // fn middle_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {
+    //     self.grab_focus();
+    //     let self_ = CodeViewTextPrivate::from_instance(self);
+
+    //     let (col, line) = { self.da_px_to_cell(&main_state, x, y) };
+    //     self.do_paste_primary(&self.view_id, line, col);
+    // }
 
     fn key_pressed(&self, key: Key, keycode: u32, state: ModifierType) {
         let self_ = CodeViewTextPrivate::from_instance(self);
@@ -688,8 +831,12 @@ impl CodeViewText {
             state,
             key.to_unicode(),
         );
-        let mut workspace = self_.workspace.get().unwrap().borrow_mut();
-        let (buffer, _) = workspace.buffer_and_theme(self_.view_id);
+        let (buffer, _) = self_
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer_and_theme(self_.view_id);
 
         let view_id = self_.view_id;
         let ch = key.to_unicode();
