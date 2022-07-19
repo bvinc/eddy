@@ -49,7 +49,7 @@ impl LayoutLine {
         return width;
     }
 
-    /// Go through all of the consecutive items in the line and convert and index to an x value
+    /// Go through all of the consecutive items in the line and convert a byte index to an x value
     pub fn index_to_x(&self, index: usize) -> i32 {
         let mut idx = index;
         let mut x = 0;
@@ -83,12 +83,14 @@ impl LayoutLine {
         x
     }
 
-    /// Go through all of the consecutive items in the line and convert and index to an x value
+    /// Go through all of the consecutive items in the line and convert an x value to a byte index
     pub fn x_to_index(&self, x: i32) -> usize {
+        if x <= 0 {
+            return 0;
+        }
         let mut idx = 0;
         let mut x_left = x;
         for item in &self.items {
-            dbg!(idx, x_left);
             if item.width < x_left {
                 x_left -= item.width;
                 idx += item.text.len();
@@ -102,10 +104,10 @@ impl LayoutLine {
                         &mut *(item.inner.analysis() as *const pango::Analysis
                             as *mut pango::Analysis)
                     },
-                    x_left * pango::SCALE,
+                    x_left,
                 );
 
-                idx += std::cmp::min(item_idx as usize + trailing as usize, item.text.len());
+                return idx + std::cmp::min(item_idx as usize + trailing as usize, item.text.len());
             }
         }
         idx

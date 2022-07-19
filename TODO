@@ -1,7 +1,8 @@
-
+Double click, triple click, get interrupted by a new drag.
+*  A double click drag should be anchored by the word, and also start a drag that's by word
 
 * tab should not render an arrow
-  - Need to edit GTK to allow changing the glyph
+  - Need to edit GTK to allow changing the glyph, GlyphInfo should have set_glyph(u32)
 *  pango_glyph_string_get_width is &mut and it shouldn't be
   - Need to edit GTK
 *  TextNode::new is &mut to glyphs and shouldn't me
@@ -35,9 +36,6 @@
 * Theme
   * Active line background
 * Auto-indent
-
-* Do I need a BufferID ?
-
 
 
 * Handle save action

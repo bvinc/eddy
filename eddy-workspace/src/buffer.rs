@@ -39,6 +39,37 @@ pub struct Buffer {
     msg_sender: Arc<Mutex<MsgSender>>,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum DragType {
+    Point,
+    Word,
+    Line,
+}
+#[derive(Debug, Copy, Clone)]
+pub struct Drag {
+    sel_idx: usize,
+    ty: DragType,
+}
+
+#[derive(Debug, Clone)]
+pub struct Selections {
+    drag: Option<Drag>,
+    sels: Vec<Selection>,
+}
+
+impl Selections {
+    fn new() -> Self {
+        Self {
+            drag: None,
+            sels: vec![Selection {
+                start: 0,
+                end: 0,
+                horiz: None,
+            }],
+        }
+    }
+}
+
 impl Buffer {
     pub fn new(id: BufferId, msg_sender: Arc<Mutex<MsgSender>>) -> Self {
         let rope = Rope::new();
@@ -1105,6 +1136,10 @@ impl Buffer {
         self.scroll_to_selections(view_id);
     }
 
+    pub fn update_drag(&mut self) {}
+
+    pub fn end_drag(&mut self) {}
+
     pub fn select_all(&mut self, view_id: ViewId) {
         let rope = &self.rope;
         let len_chars = rope.len_chars();
@@ -1214,7 +1249,17 @@ impl Buffer {
 
     pub fn paste(&mut self, view_id: ViewId) {}
 
-    pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+    pub fn start_point_drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+        dbg!("start_point_drag");
+    }
+    pub fn start_word_drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+        dbg!("start_word_drag");
+    }
+    pub fn start_line_drag(&mut self, view_id: ViewId, line_idx: usize) {
+        dbg!("start_line_drag");
+    }
+
+    pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         let rope = &self.rope;
         let byte_idx = if line_idx >= rope.len_lines() {
             rope.len_bytes()

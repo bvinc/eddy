@@ -130,8 +130,8 @@ impl Workspace {
         }
     }
 
-    pub fn buffer(&mut self, view_id: usize) -> Rc<RefCell<Buffer>> {
-        self.buffers.get_mut(&view_id).unwrap().clone()
+    pub fn buffer(&self, view_id: usize) -> Rc<RefCell<Buffer>> {
+        self.buffers.get(&view_id).unwrap().clone()
     }
 
     pub fn buffer_and_theme(&self, view_id: usize) -> (Rc<RefCell<Buffer>>, Theme) {
@@ -311,9 +311,9 @@ impl Workspace {
             .borrow_mut()
             .gesture_point_select(view_id, line_idx, line_byte_idx);
     }
-    pub fn drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
+    pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         self.buffer(view_id)
             .borrow_mut()
-            .drag(view_id, line_idx, line_byte_idx);
+            .drag_update(view_id, line_idx, line_byte_idx);
     }
 }

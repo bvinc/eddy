@@ -95,6 +95,10 @@ impl CodeViewPrivate {
         self.gutter.get().unwrap().buffer_changed();
     }
 
+    fn scroll_to_carets(&self) {
+        self.cvt.get().unwrap().scroll_to_carets();
+    }
+
     //fn get_text_node(&self,
     fn button_pressed() {
         debug!("button pressed");
@@ -143,7 +147,7 @@ impl CodeView {
         // Subscribe to buffer change events.  Add a callback to queue drawing
         // on our drawing areas.
         {
-            let mut workspace = imp.workspace.get().unwrap().borrow_mut();
+            let workspace = imp.workspace.get().unwrap().borrow_mut();
             let sender2 = imp.sender.get().unwrap().clone();
             let buffer = workspace.buffer(imp.view_id);
             let view_id = imp.view_id;
@@ -152,6 +156,15 @@ impl CodeView {
                     error!("buffer changed: {}", err);
                 };
             });
+
+            let sender3 = imp.sender.get().unwrap().clone();
+            buffer
+                .borrow_mut()
+                .connect_scroll_to_selections(view_id, move || {
+                    if let Err(err) = sender3.send(Action::ScrollToCarets { view_id }) {
+                        error!("scroll to selections: {}", err);
+                    };
+                });
         }
 
         obj.setup_widgets();
@@ -167,6 +180,11 @@ impl CodeView {
     pub fn buffer_changed(&self) {
         let cv_priv = CodeViewPrivate::from_instance(&self);
         cv_priv.buffer_changed()
+    }
+
+    pub fn scroll_to_carets(&self) {
+        let cv_priv = CodeViewPrivate::from_instance(&self);
+        cv_priv.scroll_to_carets()
     }
 
     fn setup_widgets(&self) {}

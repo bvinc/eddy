@@ -134,4 +134,24 @@ impl EddyApplicationWindow {
             }
         }
     }
+
+    pub fn scroll_to_carets(&self, view_id: ViewId) {
+        let self_ = EddyApplicationWindowPrivate::from_instance(self);
+
+        // let pages = self_.pages.borrow();
+        // for page in pages {
+
+        // }
+
+        for page_num in 0..self_.notebook.n_pages() {
+            if let Some(cv) = self_.notebook.nth_page(Some(page_num)) {
+                if let Some(cv) = cv.downcast_ref::<CodeView>() {
+                    let cv_view_id = cv.view_id();
+                    if view_id == cv_view_id {
+                        cv.scroll_to_carets();
+                    }
+                }
+            }
+        }
+    }
 }

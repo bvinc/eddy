@@ -4,22 +4,22 @@ use crate::theme::Theme;
 use crate::ui::{Layout, LayoutItem, LayoutLine};
 use cairo::glib::{ParamSpecEnum, ParamSpecObject};
 use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::{Buffer, Workspace};
+use eddy_workspace::{Buffer, Selection, Workspace};
 use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
 use glib::ParamSpec;
 use glib::Sender;
-use gtk::glib;
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, Adjustment};
+use gtk::{glib, Gesture};
 use log::*;
 use lru_cache::LruCache;
 use once_cell::sync::Lazy;
 use once_cell::unsync::OnceCell;
-use pango::{AttrColor, Attribute, FontDescription};
+use pango::{AttrColor, Attribute, FontDescription, GlyphInfo};
 use ropey::RopeSlice;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -41,6 +41,10 @@ pub struct CodeViewTextPrivate {
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: usize,
     theme: Theme,
+    gesture_drag: gtk::GestureDrag,
+    // When starting a double-click drag or triple-click drag, the initial
+    // selection is saved here.
+    drag_anchor: Selection,
 }
 
 #[glib::object_subclass]
@@ -70,6 +74,8 @@ impl ObjectSubclass for CodeViewTextPrivate {
             workspace,
             view_id,
             theme,
+            gesture_drag: gtk::GestureDrag::new(),
+            drag_anchor: Selection::new(),
         }
     }
 }
@@ -149,14 +155,30 @@ impl ObjectImpl for CodeViewTextPrivate {
         obj.set_halign(gtk::Align::Fill);
         obj.set_vexpand(true);
         obj.set_hexpand(true);
-        dbg!(obj.valign(), obj.halign());
 
         let gesture_click = gtk::GestureClick::new();
-        gesture_click.set_button(1);
-        gesture_click.connect_pressed(clone!(@strong obj as this => move |_w, n_press, x, y| {
-            this.left_button_pressed(n_press, x, y);
+        gesture_click.connect_pressed(clone!(@strong obj as this => move |gc, n_press, x, y| {
+            this.grab_focus();
+            let this_ = CodeViewTextPrivate::from_instance(&this);
+            this_.button_pressed(&this, gc, n_press, x, y);
+            // gc.set_state(gtk::EventSequenceState::Claimed);
         }));
         obj.add_controller(&gesture_click);
+
+        self.gesture_drag.set_button(gdk::BUTTON_PRIMARY);
+        self.gesture_drag.connect_drag_begin(|gd, x, y| {
+            dbg!("drag begin");
+        });
+        self.gesture_drag.connect_drag_end(|gd, x, y| {
+            dbg!("drag end");
+        });
+        self.gesture_drag
+            .connect_drag_update(clone!(@strong obj as this => move |gd, _, _| {
+                this.drag_update(gd);
+                // gd.set_state(gtk::EventSequenceState::Claimed);
+            }));
+
+        obj.add_controller(&self.gesture_drag);
 
         let event_controller_key = gtk::EventControllerKey::new();
         event_controller_key.connect_key_pressed(
@@ -201,28 +223,6 @@ impl WidgetImpl for CodeViewTextPrivate {
         // snapshot.render_background(&ctx, 10.0, 10.0, 30.0, 20.0);
         self.handle_draw(code_view, snapshot);
     }
-    // fn compute_expand(&self, obj: &Self::Type, hexpand: &mut bool, vexpand: &mut bool) {
-    //     self.parent_compute_expand(obj, hexpand, vexpand);
-    //     debug!("compute expand");
-    //     dbg!(hexpand, vexpand);
-    // }
-    // fn map(&self, obj: &Self::Type) {
-    //     self.parent_map(obj);
-    //     debug!("cvt map");
-    // }
-    fn measure(
-        &self,
-        obj: &Self::Type,
-        orientation: gtk::Orientation,
-        for_size: i32,
-    ) -> (i32, i32, i32, i32) {
-        self.parent_measure(obj, orientation, for_size);
-        debug!("cvt measure {}", orientation);
-        (100, 100, -1, -1)
-    }
-    // fn show(&self, _: &Self::Type) {
-    //     debug!("cvt show");
-    // }
     fn size_allocate(&self, obj: &Self::Type, w: i32, h: i32, bl: i32) {
         self.parent_size_allocate(obj, w, h, bl);
         debug!("cvt size allocate {} {} {}", w, h, bl);
@@ -236,12 +236,7 @@ impl WidgetImpl for CodeViewTextPrivate {
     }
 }
 impl BoxImpl for CodeViewTextPrivate {}
-impl ScrollableImpl for CodeViewTextPrivate {
-    // fn border(&self, _: &Self::Type) -> Option<gtk::Border> {
-    //     dbg!("cvt border");
-    //     Some(gtk::Border::builder().right(10).bottom(10).build())
-    // }
-}
+impl ScrollableImpl for CodeViewTextPrivate {}
 
 impl CodeViewTextPrivate {
     fn font_height(&self, cvt: &CodeViewText) -> (f64, f64) {
@@ -266,13 +261,11 @@ impl CodeViewTextPrivate {
         let (buffer, theme) = workspace.borrow_mut().buffer_and_theme(self.view_id);
         (buffer, theme)
     }
-    // fn get_workspace() -> Rc<RefCell<Workspace>> {}
 
     fn reset_vadj_upper(&self, cvt: &CodeViewText) {
         let buffer = self.get_buffer();
 
         let (font_height, _) = self.font_height(cvt);
-        // let (text_width, text_height) = self.get_text_size(state);
         let text_height = buffer.borrow().len_lines() as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
@@ -396,51 +389,103 @@ impl CodeViewTextPrivate {
         layout_line
     }
 
-    fn gesture_point_select(&self, cvt: &CodeViewText, x: f64, y: f64) {
-        let view_id = self.view_id;
-        let (buffer, text_theme) = self
-            .workspace
-            .get()
-            .unwrap()
-            .borrow()
-            .buffer_and_theme(view_id);
-        // We round the values from the scrollbars, because if we don't, rectangles
-        // will be antialiased and lines will show up inbetween highlighted lines
-        // of text.
+    fn xy_to_line_idx(&self, cvt: &CodeViewText, x: f64, y: f64) -> (usize, usize) {
+        // We round the values from the scrollbars, because if we don't,
+        // rectangles will be antialiased and lines will show up inbetween
+        // highlighted lines of text.  Since they're rounded for drawing I
+        // guess they should be rounded here.
         let vadj_value = f64::round(self.vadj.borrow().value());
-        let hadj_value = f64::round(self.hadj.borrow().value());
-
-        // TESTING
-        let pango_ctx = cvt.pango_context();
-        let mut font_height = 15.0;
-        let mut font_ascent = 15.0;
-        if let Some(metrics) = pango_ctx.metrics(None, None) {
-            font_height = metrics.height() as f64 / pango::SCALE as f64;
-            font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
-        }
+        let (font_height, _) = self.font_height(cvt);
 
         let line = ((vadj_value + y) / font_height) as usize;
-        // let line_byte = buffer.borrow().char_to_byte(sel.cursor()) - buffer.line_to_byte(line);
         let layout_line = self.make_layout_line(cvt, line);
-        let idx = layout_line.x_to_index(x as i32);
-        dbg!(line, idx);
+        let idx = layout_line.x_to_index(x as i32 * pango::SCALE);
+
+        (line, idx)
+    }
+
+    fn button_pressed(
+        &self,
+        cvt: &CodeViewText,
+        gc: &gtk::GestureClick,
+        n_press: i32,
+        x: f64,
+        y: f64,
+    ) {
+        dbg!(n_press);
+        let sequence = gc.current_sequence(); // Can be None
+        let button = gc.current_button();
+        let event = gc.last_event(sequence.as_ref()).unwrap();
+
+        let mut shift = gc.current_event().map_or(false, |ev| {
+            ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
+        });
+        let mut ctrl = gc.current_event().map_or(false, |ev| {
+            ev.modifier_state()
+                .contains(gdk::ModifierType::CONTROL_MASK)
+        });
+
+        if n_press == 1 && event.triggers_context_menu() {
+            // TODO context menu?
+        } else if button == gdk::BUTTON_MIDDLE {
+            // TODO middle click paste
+        } else if button == gdk::BUTTON_PRIMARY {
+        }
+
+        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let (line, idx) = self.xy_to_line_idx(cvt, x, y);
+
         buffer
             .borrow_mut()
             .gesture_point_select(self.view_id, line, idx);
+
+        match n_press {
+            1 => {
+                let mut buffer = buffer.borrow_mut();
+                buffer.gesture_point_select(self.view_id, line, idx);
+                buffer.start_point_drag(self.view_id, line, idx);
+            }
+
+            2 => {
+                let mut buffer = buffer.borrow_mut();
+                buffer.gesture_word_select(self.view_id, line, idx);
+                buffer.start_word_drag(self.view_id, line, idx);
+            }
+            3 => {
+                let mut buffer = buffer.borrow_mut();
+                buffer.gesture_line_select(self.view_id, line);
+                buffer.start_line_drag(self.view_id, line);
+            }
+            _ => {}
+        };
     }
 
-    fn handle_draw(&self, cv: &CodeViewText, snapshot: &gtk::Snapshot) {
+    fn gesture_toggle_sel(&self, cvt: &CodeViewText, x: f64, y: f64) {
+        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let (line, byte_idx) = self.xy_to_line_idx(cvt, x, y);
+        buffer
+            .borrow_mut()
+            .gesture_toggle_sel(self.view_id, line, byte_idx);
+    }
+
+    fn gesture_drag(&self, cvt: &CodeViewText, x: f64, y: f64) {
+        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let (line, idx) = self.xy_to_line_idx(cvt, x, y);
+        buffer.borrow_mut().drag_update(self.view_id, line, idx);
+    }
+
+    fn handle_draw(&self, cvt: &CodeViewText, snapshot: &gtk::Snapshot) {
         let draw_start = Instant::now();
 
         // let css_provider = gtk::CssProvider::new();
         // css_provider.load_from_data("* { background-color: #000000; }".as_bytes());
-        let ctx = cv.style_context();
+        let ctx = cvt.style_context();
         // ctx.add_provider(&css_provider, 1);
         // let foreground = self.model.main_state.borrow().theme.foreground;
         let theme = &self.theme;
 
-        let da_width = cv.allocated_width();
-        let da_height = cv.allocated_height();
+        let da_width = cvt.allocated_width();
+        let da_height = cvt.allocated_height();
 
         let view_id = self.view_id;
         let (buffer, text_theme) = self
@@ -475,14 +520,7 @@ impl CodeViewTextPrivate {
             vadj.borrow().upper()
         );
 
-        // TESTING
-        let pango_ctx = cv.pango_context();
-        let mut font_height = 15.0;
-        let mut font_ascent = 15.0;
-        if let Some(metrics) = pango_ctx.metrics(None, None) {
-            font_height = metrics.height() as f64 / pango::SCALE as f64;
-            font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
-        }
+        let (font_height, font_ascent) = self.font_height(cvt);
 
         let first_line = (vadj_value / font_height) as usize;
         let last_line = ((vadj_value + f64::from(da_height)) / font_height) as usize + 1;
@@ -543,9 +581,9 @@ impl CodeViewTextPrivate {
                 let line_x = -hadj_value as f32;
                 let line_y =
                     font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
-                let pango_ctx = cv.pango_context();
+                let pango_ctx = cvt.pango_context();
 
-                let mut layout_line = self.make_layout_line(cv, line_num);
+                let mut layout_line = self.make_layout_line(cvt, line_num);
                 // Loop through the items
                 for item in &mut layout_line.items {
                     let item_text = unsafe {
@@ -726,11 +764,6 @@ impl CodeViewTextPrivate {
         // for gi in &mut glyphs.glyph_info() {
         // }
     }
-
-    //fn get_text_node(&self,
-    fn button_pressed() {
-        debug!("button pressed");
-    }
 }
 
 glib::wrapper! {
@@ -783,36 +816,22 @@ impl CodeViewText {
         code_view_priv.buffer_changed(self);
     }
 
-    fn left_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {
+    pub fn scroll_to_carets(&self) {
+        let code_view_priv = CodeViewTextPrivate::from_instance(self);
+        code_view_priv.scroll_to_carets(self);
+    }
+
+    fn drag_update(&self, gd: &gtk::GestureDrag) {
         self.grab_focus();
         let self_ = CodeViewTextPrivate::from_instance(self);
 
-        // let (col, line) = { self.da_px_to_cell(&main_state, x, y) };
+        dbg!("drag update");
+        let (start_x, start_y) = gd.start_point().unwrap();
+        let (off_x, off_y) = gd.offset().unwrap();
+        let x = start_x + off_x;
+        let y = start_y + off_y;
 
-        // if eb.get_state().contains(ModifierType::SHIFT_MASK) {
-        //     self_.gesture_range_select()
-        //     self.controller
-        //         .borrow()
-        //         .core()
-        //         .gesture_range_select(&self.view_id, line, col);
-        // } else if eb.get_state().contains(ModifierType::CONTROL_MASK) {
-        //     self.controller
-        //         .borrow()
-        //         .core()
-        //         .gesture_toggle_sel(&self.view_id, line, col);
-        // } else if eb.get_event_type() == EventType::DoubleButtonPress {
-        //     self.controller
-        //         .borrow()
-        //         .core()
-        //         .gesture_word_select(&self.view_id, line, col);
-        // } else if eb.get_event_type() == EventType::TripleButtonPress {
-        //     self.controller
-        //         .borrow()
-        //         .core()
-        //         .gesture_line_select(&self.view_id, line, col);
-        // } else {
-        self_.gesture_point_select(self, x, y);
-        // }
+        self_.gesture_drag(self, x, y);
     }
 
     // fn middle_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {

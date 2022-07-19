@@ -22,6 +22,7 @@ use crate::ui::EddyApplicationWindow;
 pub enum Action {
     Open(PathBuf),
     BufferChange { view_id: usize },
+    ScrollToCarets { view_id: usize },
 }
 
 pub struct EddyApplicationPrivate {
@@ -116,6 +117,7 @@ impl EddyApplication {
         match action {
             Action::Open(pb) => self.show_err(self.action_open(&pb)),
             Action::BufferChange { view_id } => self.action_buffer_change(view_id),
+            Action::ScrollToCarets { view_id } => self.action_scroll_to_carets(view_id),
         }
         glib::Continue(true)
     }
@@ -134,6 +136,11 @@ impl EddyApplication {
     fn action_buffer_change(&self, view_id: usize) {
         let window = self.get_main_window();
         window.buffer_changed(view_id);
+    }
+
+    fn action_scroll_to_carets(&self, view_id: usize) {
+        let window = self.get_main_window();
+        window.scroll_to_carets(view_id);
     }
 
     fn show_err(&self, res: Result<(), anyhow::Error>) {
