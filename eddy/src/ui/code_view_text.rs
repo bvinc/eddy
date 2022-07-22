@@ -166,12 +166,13 @@ impl ObjectImpl for CodeViewTextPrivate {
         obj.add_controller(&gesture_click);
 
         self.gesture_drag.set_button(gdk::BUTTON_PRIMARY);
-        self.gesture_drag.connect_drag_begin(|gd, x, y| {
-            dbg!("drag begin");
-        });
-        self.gesture_drag.connect_drag_end(|gd, x, y| {
-            dbg!("drag end");
-        });
+        // self.gesture_drag.connect_drag_begin(|gd, x, y| {
+        //     dbg!("drag begin");
+        // });
+        self.gesture_drag
+            .connect_drag_end(clone!(@strong obj as this => move |gd, _, _| {
+                this.drag_end(gd);
+            }));
         self.gesture_drag
             .connect_drag_update(clone!(@strong obj as this => move |gd, _, _| {
                 this.drag_update(gd);
@@ -412,18 +413,19 @@ impl CodeViewTextPrivate {
         x: f64,
         y: f64,
     ) {
-        dbg!(n_press);
+        // dbg!(n_press);
         let sequence = gc.current_sequence(); // Can be None
         let button = gc.current_button();
         let event = gc.last_event(sequence.as_ref()).unwrap();
 
-        let mut shift = gc.current_event().map_or(false, |ev| {
+        let shift = gc.current_event().map_or(false, |ev| {
             ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
         });
-        let mut ctrl = gc.current_event().map_or(false, |ev| {
+        let ctrl = gc.current_event().map_or(false, |ev| {
             ev.modifier_state()
                 .contains(gdk::ModifierType::CONTROL_MASK)
         });
+        // dbg!(ctrl);
 
         if n_press == 1 && event.triggers_context_menu() {
             // TODO context menu?
@@ -435,26 +437,24 @@ impl CodeViewTextPrivate {
         let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
 
-        buffer
-            .borrow_mut()
-            .gesture_point_select(self.view_id, line, idx);
-
         match n_press {
             1 => {
-                let mut buffer = buffer.borrow_mut();
-                buffer.gesture_point_select(self.view_id, line, idx);
-                buffer.start_point_drag(self.view_id, line, idx);
+                if ctrl {
+                    let mut buffer = buffer.borrow_mut();
+                    buffer.gesture_toggle_sel(self.view_id, line, idx);
+                } else {
+                    let mut buffer = buffer.borrow_mut();
+                    buffer.gesture_point_select(self.view_id, line, idx);
+                }
             }
 
             2 => {
                 let mut buffer = buffer.borrow_mut();
                 buffer.gesture_word_select(self.view_id, line, idx);
-                buffer.start_word_drag(self.view_id, line, idx);
             }
             3 => {
                 let mut buffer = buffer.borrow_mut();
                 buffer.gesture_line_select(self.view_id, line);
-                buffer.start_line_drag(self.view_id, line);
             }
             _ => {}
         };
@@ -472,6 +472,11 @@ impl CodeViewTextPrivate {
         let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
         buffer.borrow_mut().drag_update(self.view_id, line, idx);
+    }
+
+    fn drag_end(&self, cvt: &CodeViewText) {
+        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        buffer.borrow_mut().drag_end(self.view_id);
     }
 
     fn handle_draw(&self, cvt: &CodeViewText, snapshot: &gtk::Snapshot) {
@@ -541,7 +546,7 @@ impl CodeViewTextPrivate {
         change_to_color(&mut highlight_bg_color, text_theme.line_highlight.bg);
         for i in first_line..last_line {
             for sel in buffer.borrow().selections(view_id) {
-                if buffer.borrow().char_to_line(sel.cursor()) != i {
+                if !sel.is_caret() || buffer.borrow().char_to_line(sel.cursor()) != i {
                     continue;
                 }
 
@@ -825,13 +830,17 @@ impl CodeViewText {
         self.grab_focus();
         let self_ = CodeViewTextPrivate::from_instance(self);
 
-        dbg!("drag update");
         let (start_x, start_y) = gd.start_point().unwrap();
         let (off_x, off_y) = gd.offset().unwrap();
         let x = start_x + off_x;
         let y = start_y + off_y;
 
         self_.gesture_drag(self, x, y);
+    }
+
+    fn drag_end(&self, gd: &gtk::GestureDrag) {
+        let self_ = CodeViewTextPrivate::from_instance(self);
+        self_.drag_end(self);
     }
 
     // fn middle_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {

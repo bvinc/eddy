@@ -29,7 +29,7 @@ pub struct Buffer {
     // history: Vec<Rope>,
     rope: Rope,
     history: History,
-    selections: HashMap<ViewId, Vec<Selection>>,
+    selections: HashMap<ViewId, Selections>,
     layer: Box<dyn Layer>,
     line_ending: LineEnding,
     tab_mode: TabMode,
@@ -47,18 +47,19 @@ pub enum DragType {
 }
 #[derive(Debug, Copy, Clone)]
 pub struct Drag {
-    sel_idx: usize,
     ty: DragType,
+    sel_idx: usize,
+    anchor: Selection,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Selections {
     drag: Option<Drag>,
     sels: Vec<Selection>,
 }
 
 impl Selections {
-    fn new() -> Self {
+    fn one_at_zero() -> Self {
         Self {
             drag: None,
             sels: vec![Selection {
@@ -66,6 +67,12 @@ impl Selections {
                 end: 0,
                 horiz: None,
             }],
+        }
+    }
+    fn with_one(sel: Selection) -> Self {
+        Self {
+            drag: None,
+            sels: vec![sel],
         }
     }
 }
@@ -114,19 +121,12 @@ impl Buffer {
     }
 
     pub fn init_view(&mut self, view_id: ViewId) {
-        self.selections.insert(
-            view_id,
-            vec![Selection {
-                start: 0,
-                end: 0,
-                horiz: None,
-            }],
-        );
+        self.selections.insert(view_id, Selections::one_at_zero());
     }
 
     /// Get selections that are part of a view
     pub fn selections(&self, view_id: ViewId) -> &[Selection] {
-        self.selections.get(&view_id).unwrap()
+        &self.selections.get(&view_id).unwrap().sels
     }
 
     /// Subscribe to buffer updates.  Whenever this buffer changes, call `cb`.
@@ -186,7 +186,7 @@ impl Buffer {
         // Update all the selections
         let size = char_range.end - char_range.start;
         for sels in self.selections.values_mut() {
-            for sel in sels {
+            for sel in &mut sels.sels {
                 if char_range.contains(&sel.start) {
                     // collapse points inside the removal to the beginning
                     sel.start = char_range.start;
@@ -215,7 +215,7 @@ impl Buffer {
         rope.insert(char_idx, &text);
         let size = text.chars().count();
         for sels in &mut self.selections.values_mut() {
-            for sel in sels {
+            for sel in &mut sels.sels {
                 if sel.start >= char_idx {
                     sel.start += size;
                 }
@@ -230,18 +230,19 @@ impl Buffer {
     pub fn insert(&mut self, view_id: ViewId, text: &str) {
         let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
 
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let sel = self.selections.get(&view_id).unwrap().sels[i];
             self.remove(sel.range());
         }
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let mut sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let mut sel = self.selections.get(&view_id).unwrap().sels[i];
             self.insert_at(sel.cursor(), text);
             sel.horiz = None;
         }
 
         let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
-        self.history.new_change(&self.rope, sels_before, sels_after);
+        self.history
+            .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
         self.scroll_to_selections(view_id);
@@ -262,8 +263,8 @@ impl Buffer {
     pub fn delete_forward(&mut self, view_id: ViewId) {
         let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
 
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let sel = self.selections.get(&view_id).unwrap().sels[i];
             let len_chars = self.rope.len_chars();
             if sel.is_caret() {
                 if sel.cursor() < len_chars {
@@ -280,7 +281,8 @@ impl Buffer {
         }
 
         let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
-        self.history.new_change(&self.rope, sels_before, sels_after);
+        self.history
+            .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
         self.scroll_to_selections(view_id);
@@ -292,8 +294,8 @@ impl Buffer {
         let sels_before = self.selections.get(&view_id).cloned().unwrap_or_default();
 
         // Delete all selection regions
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let sel = self.selections.get(&view_id).unwrap().sels[i];
             if sel.is_caret() {
                 if sel.cursor() != 0 {
                     // Remove the character before the cursor
@@ -308,7 +310,8 @@ impl Buffer {
         }
 
         let sels_after = self.selections.get(&view_id).cloned().unwrap_or_default();
-        self.history.new_change(&self.rope, sels_before, sels_after);
+        self.history
+            .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
         self.scroll_to_selections(view_id);
@@ -318,7 +321,7 @@ impl Buffer {
     pub fn move_left(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.horiz = None;
             if sel.is_caret() {
                 // move cursor to the left
@@ -344,7 +347,7 @@ impl Buffer {
         let rope = &self.rope;
 
         let len_chars = rope.len_chars();
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.horiz = None;
             if sel.is_caret() {
                 // move cursor to the right
@@ -450,7 +453,7 @@ impl Buffer {
     /// Move the cursor up
     pub fn move_up(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.start = final_char;
@@ -464,7 +467,7 @@ impl Buffer {
     /// Move the cursor up while modifying the selection region
     pub fn move_up_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.end = final_char;
@@ -568,7 +571,7 @@ impl Buffer {
     /// Move the cursor down
     pub fn move_down(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.start = final_char;
@@ -582,7 +585,7 @@ impl Buffer {
     /// Move the cursor down while modifying the selection region
     pub fn move_down_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
             sel.horiz = horiz;
             sel.end = final_char;
@@ -674,7 +677,7 @@ impl Buffer {
     pub fn move_word_left(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let word_right = Self::word_left(rope, sel.end);
             sel.start = word_right;
             sel.end = word_right;
@@ -688,7 +691,7 @@ impl Buffer {
     pub fn move_word_right(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let word_right = Self::word_right(rope, sel.end);
             sel.start = word_right;
             sel.end = word_right;
@@ -703,7 +706,7 @@ impl Buffer {
     pub fn move_left_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             if sel.end > 0 {
                 let left = prev_grapheme_boundary(rope, sel.end);
                 sel.end = left;
@@ -719,7 +722,7 @@ impl Buffer {
         let rope = &self.rope;
         let len_chars = rope.len_chars();
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             if sel.end < len_chars {
                 let right = next_grapheme_boundary(rope, sel.end);
                 sel.end = right;
@@ -736,7 +739,7 @@ impl Buffer {
     pub fn move_word_left_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let word_right = Self::word_left(rope, sel.end);
             sel.end = word_right;
             sel.horiz = None;
@@ -751,7 +754,7 @@ impl Buffer {
     pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let word_right = Self::word_right(rope, sel.end);
             sel.end = word_right;
             sel.horiz = None;
@@ -763,7 +766,7 @@ impl Buffer {
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let line = rope.char_to_line(sel.cursor());
             let line_home = rope.line_to_char(line);
             sel.start = line_home;
@@ -780,7 +783,7 @@ impl Buffer {
 
         let len_lines = rope.len_lines();
         let end_of_doc = rope.len_chars();
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let line = rope.char_to_line(sel.cursor());
             if line == len_lines - 1 {
                 sel.start = end_of_doc;
@@ -801,7 +804,7 @@ impl Buffer {
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let line = rope.char_to_line(sel.cursor());
             let line_home = rope.line_to_char(line);
             sel.end = line_home;
@@ -817,7 +820,7 @@ impl Buffer {
 
         let len_lines = rope.len_lines();
         let end_of_doc = rope.len_chars();
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let line = rope.char_to_line(sel.cursor());
             if line == len_lines - 1 {
                 sel.end = end_of_doc;
@@ -834,7 +837,7 @@ impl Buffer {
     }
 
     pub fn move_to_beginning_of_document(&mut self, view_id: ViewId) {
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.start = 0;
             sel.end = 0;
         }
@@ -846,7 +849,7 @@ impl Buffer {
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let end_of_doc = rope.len_chars();
             sel.start = end_of_doc;
             sel.end = end_of_doc;
@@ -859,7 +862,7 @@ impl Buffer {
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.end = 0;
         }
 
@@ -870,7 +873,7 @@ impl Buffer {
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
         let rope = &self.rope;
 
-        for sel in self.selections.entry(view_id).or_default() {
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             let end_of_doc = rope.len_chars();
             sel.end = end_of_doc;
         }
@@ -932,15 +935,16 @@ impl Buffer {
         sel.end = total_char_idx;
 
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Occupied(ref mut e) => {
-                e.get_mut().clear();
-                e.get_mut().push(sel);
-            }
-            Entry::Vacant(e) => {
-                e.insert(vec![sel]);
-            }
-        }
+        let sels = self.selections.entry(view_id).or_default();
+        sels.sels.clear();
+        sels.sels.push(sel);
+
+        sels.drag = Some(Drag {
+            ty: DragType::Point,
+            sel_idx: 0,
+            anchor: sel,
+        });
+        dbg!("new drag point");
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
@@ -959,6 +963,7 @@ impl Buffer {
             .selections
             .entry(view_id)
             .or_default()
+            .sels
             .iter()
             .map(|&s| s.start)
             .min()
@@ -966,15 +971,9 @@ impl Buffer {
         sel.end = total_char_idx;
 
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Occupied(ref mut e) => {
-                e.get_mut().clear();
-                e.get_mut().push(sel);
-            }
-            Entry::Vacant(e) => {
-                e.insert(vec![sel]);
-            }
-        }
+        let sels = self.selections.entry(view_id).or_default();
+        sels.sels.clear();
+        sels.sels.push(sel);
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
@@ -996,26 +995,19 @@ impl Buffer {
         };
 
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Vacant(e) => {
-                // This shouldn't happen, but if it does, add a cursor
-                e.insert(vec![new_sel]);
+        let sels = self.selections.entry(view_id).or_default();
+        // Search for a selection where the user clicked
+        match sels.sels.binary_search_by_key(&total_char_idx, |s| s.start) {
+            Ok(ix) => {
+                // We found one, remove it, unless it's the only one
+                sels.sels.remove(ix);
             }
-            Entry::Occupied(ref mut e) => {
-                // Search for a selection where the user clicked
-                match e.get().binary_search_by_key(&total_char_idx, |s| s.start) {
-                    Ok(ix) => {
-                        // We found one, remove it
-                        e.get_mut().remove(ix);
-                    }
-                    Err(ix) => {
-                        if ix > 0 && e.get()[ix - 1].end >= total_char_idx {
-                            // The one before it overlaps where the user clicked
-                            e.get_mut().remove(ix - 1);
-                        } else {
-                            e.get_mut().insert(ix, new_sel);
-                        }
-                    }
+            Err(ix) => {
+                if ix > 0 && sels.sels[ix - 1].end >= total_char_idx {
+                    // The one before it overlaps where the user clicked
+                    sels.sels.remove(ix - 1);
+                } else {
+                    sels.sels.insert(ix, new_sel);
                 }
             }
         };
@@ -1089,16 +1081,16 @@ impl Buffer {
             end: right_char_idx,
             horiz: None,
         };
+
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Occupied(ref mut e) => {
-                e.get_mut().clear();
-                e.get_mut().push(sel);
-            }
-            Entry::Vacant(e) => {
-                e.insert(vec![sel]);
-            }
-        }
+        let mut sels = self.selections.entry(view_id).or_default();
+        sels.sels.clear();
+        sels.sels.push(sel);
+        sels.drag = Some(Drag {
+            ty: DragType::Word,
+            sel_idx: 0,
+            anchor: sel,
+        });
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
@@ -1122,23 +1114,18 @@ impl Buffer {
         sel.end = line_end_char_idx;
 
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Occupied(ref mut e) => {
-                e.get_mut().clear();
-                e.get_mut().push(sel);
-            }
-            Entry::Vacant(e) => {
-                e.insert(vec![sel]);
-            }
-        }
+        let mut sels = self.selections.entry(view_id).or_default();
+        sels.sels.clear();
+        sels.sels.push(sel);
+        sels.drag = Some(Drag {
+            ty: DragType::Line,
+            sel_idx: 0,
+            anchor: sel,
+        });
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
-
-    pub fn update_drag(&mut self) {}
-
-    pub fn end_drag(&mut self) {}
 
     pub fn select_all(&mut self, view_id: ViewId) {
         let rope = &self.rope;
@@ -1146,45 +1133,29 @@ impl Buffer {
         let mut sel = Selection::new();
         sel.start = 0;
         sel.end = len_chars;
-        self.selections.insert(view_id, vec![sel]);
+        self.selections.insert(view_id, Selections::with_one(sel));
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
 
-    pub fn replace_selections(&mut self, view_id: ViewId, sels: &[Selection]) {
+    pub fn replace_selections(&mut self, view_id: ViewId, new_sels: &[Selection]) {
         use std::collections::hash_map::Entry;
-        match self.selections.entry(view_id) {
-            Entry::Occupied(ref mut e) => {
-                e.get_mut().clear();
-                e.get_mut().extend_from_slice(sels);
-            }
-            Entry::Vacant(e) => {
-                let mut v = Vec::new();
-                v.extend_from_slice(sels);
-                e.insert(v);
-            }
-        }
+        let sels = self.selections.entry(view_id).or_default();
+        sels.sels.clear();
+        sels.sels.extend_from_slice(new_sels);
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
 
     pub fn undo(&mut self, view_id: ViewId) {
-        if let Some((rope, sels)) = self.history.undo() {
+        if let Some((rope, new_sels)) = self.history.undo() {
             self.rope = rope;
             use std::collections::hash_map::Entry;
-            match self.selections.entry(view_id) {
-                Entry::Occupied(ref mut e) => {
-                    e.get_mut().clear();
-                    e.get_mut().extend_from_slice(sels);
-                }
-                Entry::Vacant(e) => {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(sels);
-                    e.insert(v);
-                }
-            }
+            let sels = self.selections.entry(view_id).or_default();
+            sels.sels.clear();
+            sels.sels.extend_from_slice(new_sels);
         }
 
         self.fix_selections();
@@ -1193,20 +1164,12 @@ impl Buffer {
     }
 
     pub fn redo(&mut self, view_id: ViewId) {
-        if let Some((rope, sels)) = self.history.redo() {
+        if let Some((rope, new_sels)) = self.history.redo() {
             self.rope = rope;
             use std::collections::hash_map::Entry;
-            match self.selections.entry(view_id) {
-                Entry::Occupied(ref mut e) => {
-                    e.get_mut().clear();
-                    e.get_mut().extend_from_slice(sels);
-                }
-                Entry::Vacant(e) => {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(sels);
-                    e.insert(v);
-                }
-            }
+            let sels = self.selections.entry(view_id).or_default();
+            sels.sels.clear();
+            sels.sels.extend_from_slice(new_sels);
         }
 
         self.fix_selections();
@@ -1216,8 +1179,8 @@ impl Buffer {
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
         let ret = self.copy(view_id);
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let sel = self.selections.get(&view_id).unwrap().sels[i];
             if !sel.is_caret() {
                 // Just remove the selection
                 self.remove(sel.range());
@@ -1228,8 +1191,8 @@ impl Buffer {
 
     pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
         let mut ret = String::new();
-        for i in 0..self.selections.entry(view_id).or_default().len() {
-            let sel = self.selections.get(&view_id).unwrap()[i];
+        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+            let sel = self.selections.get(&view_id).unwrap().sels[i];
             if !sel.is_caret() {
                 // Just remove the selection
                 let rope = &self.rope;
@@ -1249,18 +1212,15 @@ impl Buffer {
 
     pub fn paste(&mut self, view_id: ViewId) {}
 
-    pub fn start_point_drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
-        dbg!("start_point_drag");
-    }
-    pub fn start_word_drag(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
-        dbg!("start_word_drag");
-    }
-    pub fn start_line_drag(&mut self, view_id: ViewId, line_idx: usize) {
-        dbg!("start_line_drag");
-    }
-
     pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         let rope = &self.rope;
+        let sels = self.selections.entry(view_id).or_default();
+        let drag = match sels.drag {
+            Some(ref s) => s,
+            None => return,
+        };
+        // dbg!("drag update");
+
         let byte_idx = if line_idx >= rope.len_lines() {
             rope.len_bytes()
         } else {
@@ -1269,12 +1229,53 @@ impl Buffer {
                 rope.len_bytes(),
             )
         };
-        for sel in self.selections.entry(view_id).or_default() {
-            sel.end = rope.byte_to_char(byte_idx);
+
+        let sel = match sels.sels.get_mut(drag.sel_idx) {
+            Some(sel) => sel,
+            None => return,
+        };
+        match drag.ty {
+            DragType::Point => {
+                sel.end = rope.byte_to_char(byte_idx);
+            }
+            DragType::Word => {
+                if byte_idx > drag.anchor.right() {
+                    // drag to right
+                    sel.start = sel.left();
+                    sel.end = Self::word_right(rope, byte_idx);
+                } else if byte_idx < drag.anchor.left() {
+                    // drag to left
+                    sel.start = sel.right();
+                    sel.end = Self::word_left(rope, byte_idx);
+                } else {
+                    // on word
+                    *sel = drag.anchor
+                }
+            }
+            DragType::Line => {
+                let line = rope.byte_to_line(byte_idx);
+                if line > rope.byte_to_line(drag.anchor.right()) {
+                    // drag to down
+                    sel.start = sel.left();
+                    sel.end = rope.line_to_byte(line + 1);
+                } else if line < rope.byte_to_line(drag.anchor.left()) {
+                    // drag to up
+                    sel.start = sel.right();
+                    sel.end = rope.line_to_byte(line);
+                } else {
+                    // on line
+                    *sel = drag.anchor
+                }
+            }
         }
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
+    }
+
+    pub fn drag_end(&mut self, view_id: ViewId) {
+        // dbg!("drag end");
+        self.selections.entry(view_id).or_default().drag = None;
     }
 
     // currently the only thing this does is ensure that all selections are not
@@ -1285,7 +1286,7 @@ impl Buffer {
         let len_chars = rope.len_chars();
 
         for (_, sels) in &mut self.selections {
-            for sel in sels {
+            for sel in &mut sels.sels {
                 if sel.start > len_chars {
                     sel.start = len_chars
                 }
@@ -1298,8 +1299,8 @@ impl Buffer {
 
     pub fn check_invariants(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        debug_assert!(self.selections.get(&view_id).unwrap().len() > 0);
-        for sel in self.selections.entry(view_id).or_default() {
+        debug_assert!(self.selections.get(&view_id).unwrap().sels.len() > 0);
+        for sel in &mut self.selections.entry(view_id).or_default().sels {
             // dbg!(
             //     rope,
             //     sel.start,
@@ -1443,7 +1444,12 @@ impl Buffer {
             }
         }
 
-        for sel in self.selections.get(&view_id).unwrap_or(&vec![]) {
+        for sel in self
+            .selections
+            .get(&view_id)
+            .map(|s| s.sels.as_slice())
+            .unwrap_or_default()
+        {
             if !sel.is_caret() {
                 let r = sel.range();
                 let sel_start_byte = self.char_to_byte(r.start);
@@ -1723,8 +1729,8 @@ mod tests {
         buf.move_up(0);
         buf.move_down(0);
         assert_eq!(
-            buf.selections.get(&0).unwrap(),
-            &vec![Selection {
+            buf.selections.get(&0).unwrap().sels,
+            vec![Selection {
                 start: 6,
                 end: 6,
                 horiz: Some(2),
@@ -1741,8 +1747,8 @@ mod tests {
         buf.move_left(0);
         buf.move_down(0);
         assert_eq!(
-            buf.selections.get(&0).unwrap(),
-            &vec![Selection {
+            buf.selections.get(&0).unwrap().sels,
+            vec![Selection {
                 start: 5,
                 end: 5,
                 horiz: Some(3),
@@ -1758,8 +1764,8 @@ mod tests {
         buf.move_left(0);
         buf.move_down(0);
         assert_eq!(
-            buf.selections.get(&0).unwrap(),
-            &vec![Selection {
+            buf.selections.get(&0).unwrap().sels,
+            vec![Selection {
                 start: 3,
                 end: 3,
                 horiz: Some(2),
