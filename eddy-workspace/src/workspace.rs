@@ -64,6 +64,7 @@ impl Workspace {
         let buf_id = self.next_buf_id;
         self.next_buf_id += 1;
         self.views.insert(view_id, buf_id);
+        dbg!("new view", view_id);
         let mut buffer = if let Some(path) = path {
             let buf = Buffer::from_file(buf_id, path, self.msg_sender.clone())?;
 

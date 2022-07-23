@@ -107,7 +107,11 @@ impl EddyApplicationWindow {
             .and_then(|p| p.file_name())
             .map(|p| p.to_string_lossy().to_string());
         let page_num = self_.notebook.append_page(
-            &CodeView::new(app_private.workspace.clone(), app_private.sender.clone()),
+            &CodeView::new(
+                app_private.workspace.clone(),
+                app_private.sender.clone(),
+                view_id,
+            ),
             Some(&gtk::Label::new(file_name.as_deref())),
         );
         self_.pages.borrow_mut().push(Page {

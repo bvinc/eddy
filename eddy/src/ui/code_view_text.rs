@@ -39,7 +39,7 @@ pub struct CodeViewTextPrivate {
     vscroll_policy: gtk::ScrollablePolicy,
     sender: OnceCell<Sender<Action>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
-    view_id: usize,
+    view_id: Cell<usize>,
     theme: Theme,
     gesture_drag: gtk::GestureDrag,
     // When starting a double-click drag or triple-click drag, the initial
@@ -59,7 +59,7 @@ impl ObjectSubclass for CodeViewTextPrivate {
     fn new() -> Self {
         let sender = OnceCell::new();
         let workspace = OnceCell::new();
-        let view_id = 0;
+        let view_id = Cell::new(0);
         let theme = Theme::default();
 
         let hadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
@@ -253,13 +253,13 @@ impl CodeViewTextPrivate {
 
     fn get_buffer(&self) -> Rc<RefCell<Buffer>> {
         let workspace = self.workspace.get().unwrap();
-        let (buffer, _) = workspace.borrow_mut().buffer_and_theme(self.view_id);
+        let (buffer, _) = workspace.borrow_mut().buffer_and_theme(self.view_id.get());
         buffer
     }
 
     fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
         let workspace = self.workspace.get().unwrap();
-        let (buffer, theme) = workspace.borrow_mut().buffer_and_theme(self.view_id);
+        let (buffer, theme) = workspace.borrow_mut().buffer_and_theme(self.view_id.get());
         (buffer, theme)
     }
 
@@ -284,7 +284,7 @@ impl CodeViewTextPrivate {
         let buffer = self.get_buffer();
         let (font_height, _) = self.font_height(cvt);
         let buffer = buffer.borrow();
-        let selections = buffer.selections(self.view_id);
+        let selections = buffer.selections(self.view_id.get());
 
         if selections.len() == 0 {
             return;
@@ -343,7 +343,7 @@ impl CodeViewTextPrivate {
         if let Some((line, attrs)) =
             buffer
                 .borrow()
-                .get_line_with_attributes(self.view_id, line_num, &text_theme)
+                .get_line_with_attributes(self.view_id.get(), line_num, &text_theme)
         {
             let text: Cow<str> = line.into();
 
@@ -434,49 +434,71 @@ impl CodeViewTextPrivate {
         } else if button == gdk::BUTTON_PRIMARY {
         }
 
-        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let buffer = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer(self.view_id.get());
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
 
         match n_press {
             1 => {
                 if ctrl {
                     let mut buffer = buffer.borrow_mut();
-                    buffer.gesture_toggle_sel(self.view_id, line, idx);
+                    buffer.gesture_toggle_sel(self.view_id.get(), line, idx);
                 } else {
                     let mut buffer = buffer.borrow_mut();
-                    buffer.gesture_point_select(self.view_id, line, idx);
+                    buffer.gesture_point_select(self.view_id.get(), line, idx);
                 }
             }
 
             2 => {
                 let mut buffer = buffer.borrow_mut();
-                buffer.gesture_word_select(self.view_id, line, idx);
+                buffer.gesture_word_select(self.view_id.get(), line, idx);
             }
             3 => {
                 let mut buffer = buffer.borrow_mut();
-                buffer.gesture_line_select(self.view_id, line);
+                buffer.gesture_line_select(self.view_id.get(), line);
             }
             _ => {}
         };
     }
 
     fn gesture_toggle_sel(&self, cvt: &CodeViewText, x: f64, y: f64) {
-        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let buffer = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer(self.view_id.get());
         let (line, byte_idx) = self.xy_to_line_idx(cvt, x, y);
         buffer
             .borrow_mut()
-            .gesture_toggle_sel(self.view_id, line, byte_idx);
+            .gesture_toggle_sel(self.view_id.get(), line, byte_idx);
     }
 
     fn gesture_drag(&self, cvt: &CodeViewText, x: f64, y: f64) {
-        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
+        let buffer = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer(self.view_id.get());
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
-        buffer.borrow_mut().drag_update(self.view_id, line, idx);
+        buffer
+            .borrow_mut()
+            .drag_update(self.view_id.get(), line, idx);
     }
 
     fn drag_end(&self, cvt: &CodeViewText) {
-        let buffer = self.workspace.get().unwrap().borrow().buffer(self.view_id);
-        buffer.borrow_mut().drag_end(self.view_id);
+        let buffer = self
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer(self.view_id.get());
+        buffer.borrow_mut().drag_end(self.view_id.get());
     }
 
     fn handle_draw(&self, cvt: &CodeViewText, snapshot: &gtk::Snapshot) {
@@ -492,7 +514,7 @@ impl CodeViewTextPrivate {
         let da_width = cvt.allocated_width();
         let da_height = cvt.allocated_height();
 
-        let view_id = self.view_id;
+        let view_id = self.view_id.get();
         let (buffer, text_theme) = self
             .workspace
             .get()
@@ -778,10 +800,11 @@ glib::wrapper! {
 }
 
 impl CodeViewText {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: usize) -> Self {
         let obj = glib::Object::new::<Self>(&[]).unwrap();
         let imp = CodeViewTextPrivate::from_instance(&obj);
 
+        imp.view_id.set(view_id);
         imp.workspace.set(workspace);
         imp.sender.set(sender);
 
@@ -864,9 +887,9 @@ impl CodeViewText {
             .get()
             .unwrap()
             .borrow()
-            .buffer_and_theme(self_.view_id);
+            .buffer_and_theme(self_.view_id.get());
 
-        let view_id = self_.view_id;
+        let view_id = self_.view_id.get();
         let ch = key.to_unicode();
 
         let alt = state.contains(ModifierType::ALT_MASK);

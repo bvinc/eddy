@@ -2,7 +2,7 @@ use super::{CodeViewText, Gutter};
 use crate::app::Action;
 use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan};
-use eddy_workspace::Workspace;
+use eddy_workspace::{ViewId, Workspace};
 use gdk::Key;
 use gdk::ModifierType;
 use glib::clone;
@@ -19,7 +19,7 @@ use once_cell::unsync::OnceCell;
 use pango::Attribute;
 use ropey::RopeSlice;
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::{max, min};
 use std::rc::Rc;
 use std::time::Instant;
@@ -31,7 +31,7 @@ pub struct CodeViewPrivate {
     vadj: Adjustment,
     sender: OnceCell<Sender<Action>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
-    view_id: usize,
+    view_id: Cell<usize>,
     theme: Theme,
     scrolled_window: OnceCell<gtk::ScrolledWindow>,
 }
@@ -49,7 +49,7 @@ impl ObjectSubclass for CodeViewPrivate {
         let workspace = OnceCell::new();
         let cvt = OnceCell::new();
         let gutter = OnceCell::new();
-        let view_id = 0;
+        let view_id = Cell::new(0);
         let theme = Theme::default();
 
         let hadj = Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -111,16 +111,17 @@ glib::wrapper! {
 }
 
 impl CodeView {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: ViewId) -> Self {
         let obj = glib::Object::new::<Self>(&[]).unwrap();
         let imp = CodeViewPrivate::from_instance(&obj);
+        imp.view_id.set(view_id);
 
-        let cvt = CodeViewText::new(workspace.clone(), sender.clone());
+        let cvt = CodeViewText::new(workspace.clone(), sender.clone(), view_id);
         cvt.set_hadjust(&imp.hadj);
         cvt.set_vadjust(&imp.vadj);
         let _ = imp.cvt.set(cvt.clone());
 
-        let gutter = Gutter::new(workspace.clone(), sender.clone());
+        let gutter = Gutter::new(workspace.clone(), sender.clone(), view_id);
         gutter.set_vadjust(&imp.vadj);
         let _ = imp.gutter.set(gutter.clone());
 
@@ -149,8 +150,8 @@ impl CodeView {
         {
             let workspace = imp.workspace.get().unwrap().borrow_mut();
             let sender2 = imp.sender.get().unwrap().clone();
-            let buffer = workspace.buffer(imp.view_id);
-            let view_id = imp.view_id;
+            let buffer = workspace.buffer(imp.view_id.get());
+            let view_id = imp.view_id.get();
             buffer.borrow_mut().connect_update(move || {
                 if let Err(err) = sender2.send(Action::BufferChange { view_id }) {
                     error!("buffer changed: {}", err);
@@ -174,7 +175,7 @@ impl CodeView {
 
     pub fn view_id(&self) -> usize {
         let code_view_priv = CodeViewPrivate::from_instance(&self);
-        code_view_priv.view_id
+        code_view_priv.view_id.get()
     }
 
     pub fn buffer_changed(&self) {

@@ -1,24 +1,29 @@
-Double click, triple click, get interrupted by a new drag.
-*  A double click drag should be anchored by the word, and also start a drag that's by word
+* Performance problem when editing syntax highlighted file
+* Need a view port thingy on the left bar so it can scroll
 
-* tab should not render an arrow
-  - Need to edit GTK to allow changing the glyph, GlyphInfo should have set_glyph(u32)
-*  pango_glyph_string_get_width is &mut and it shouldn't be
-  - Need to edit GTK
-*  TextNode::new is &mut to glyphs and shouldn't me
-  - Need to edit GTK
+* Need to edit GTK:
+  * tab should not render an arrow
+    - Need to edit GTK to allow changing the glyph, GlyphInfo should have set_glyph(u32)
+    - Made PR
+    - PR merged
+  *  pango_glyph_string_get_width is &mut and it shouldn't be
+    - Need to edit GTK
+    - Made PR
+  *  TextNode::new is &mut to glyphs and shouldn't be
+    - Need to edit GTK
+    - Made PR
+
+
 * up and down don't save horizontal in a graphically correct way
   - doesn't even work with non-fixed width fonts
-* highlighting a line should include a space for the newline
-
-* Tabs are broken drawing the cursor
-  * Tabs are always isolated into their own item, so the item shaping needs to be modified.
-
+* highlighting a line should include a space at the end for the newline
+* Fix performance on syntax highlighting
+* double click drag doesn't drag to the next word the way I want
 
 
 * Find and Replace
 * Auto Indent
-  * Compare block level at beginning of last line to the end of last line
+  * Compare block level at     beginning of last line to the end of last line
 * Save
   * Make Save action disable if save is not possible
   * Make can_save that asks if there is a file associated with buffer

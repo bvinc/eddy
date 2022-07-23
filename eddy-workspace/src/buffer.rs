@@ -944,7 +944,6 @@ impl Buffer {
             sel_idx: 0,
             anchor: sel,
         });
-        dbg!("new drag point");
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);

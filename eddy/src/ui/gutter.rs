@@ -27,7 +27,7 @@ pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
     sender: OnceCell<Sender<Action>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
-    view_id: usize,
+    view_id: Cell<usize>,
     theme: Theme,
     gutter_nchars: Cell<usize>,
 }
@@ -43,7 +43,7 @@ impl ObjectSubclass for GutterPrivate {
     fn new() -> Self {
         let sender = OnceCell::new();
         let workspace = OnceCell::new();
-        let view_id = 0;
+        let view_id = Cell::new(0);
         let theme = Theme::default();
         let vadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
         let gutter_nchars = Cell::new(0);
@@ -132,7 +132,7 @@ impl GutterPrivate {
 
     fn buffer_changed(&self, gutter: &Gutter) {
         let mut workspace = self.workspace.get().unwrap().borrow_mut();
-        let view_id = self.view_id;
+        let view_id = self.view_id.get();
         let (buffer, _) = workspace.buffer_and_theme(view_id);
         let max_line_num = buffer.borrow().len_lines();
         self.gutter_nchars.set(format!("{}", max_line_num).len());
@@ -150,7 +150,7 @@ impl GutterPrivate {
         let da_height = cv.allocated_height();
 
         let mut workspace = self.workspace.get().unwrap().borrow_mut();
-        let view_id = self.view_id;
+        let view_id = self.view_id.get();
         let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
         // let (text_width, text_height) = self.get_text_size();
@@ -329,12 +329,13 @@ glib::wrapper! {
 }
 
 impl Gutter {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: usize) -> Self {
         let gutter = glib::Object::new::<Self>(&[]).unwrap();
         let gutter_priv = GutterPrivate::from_instance(&gutter);
 
         let _ = gutter_priv.workspace.set(workspace);
         let _ = gutter_priv.sender.set(sender);
+        let _ = gutter_priv.view_id.set(view_id);
 
         gutter_priv.buffer_changed(&gutter);
 
