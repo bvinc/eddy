@@ -602,7 +602,7 @@ impl Buffer {
             Whitespace,
             Symbols,
             Letters,
-        };
+        }
         let mut state = State::Whitespace;
 
         let mut final_char = char_idx;
@@ -860,8 +860,6 @@ impl Buffer {
     }
 
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
-        let rope = &self.rope;
-
         for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.end = 0;
         }
@@ -1209,7 +1207,7 @@ impl Buffer {
         }
     }
 
-    pub fn paste(&mut self, view_id: ViewId) {}
+    pub fn paste(&mut self, _view_id: ViewId) {}
 
     pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         let rope = &self.rope;

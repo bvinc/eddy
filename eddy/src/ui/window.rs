@@ -106,7 +106,7 @@ impl EddyApplicationWindow {
         let file_name = path
             .and_then(|p| p.file_name())
             .map(|p| p.to_string_lossy().to_string());
-        let page_num = self_.notebook.append_page(
+        let _page_num = self_.notebook.append_page(
             &CodeView::new(
                 app_private.workspace.clone(),
                 app_private.sender.clone(),
