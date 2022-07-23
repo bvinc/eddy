@@ -1,4 +1,5 @@
 use anyhow::*;
+use cairo::glib::translate::FromGlib;
 use eddy_workspace::Workspace;
 use gio::ApplicationFlags;
 use glib::{subclass, WeakRef};
@@ -19,6 +20,7 @@ use std::rc::Rc;
 
 use crate::ui::EddyApplicationWindow;
 
+#[derive(Clone, Debug)]
 pub enum Action {
     Open(PathBuf),
     BufferChange { view_id: usize },
@@ -41,7 +43,7 @@ impl ObjectSubclass for EddyApplicationPrivate {
     type Class = subclass::basic::ClassStruct<Self>;
 
     fn new() -> Self {
-        let (sender, r) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+        let (sender, r) = glib::MainContext::channel(unsafe { glib::Priority::from_glib(200) });
         let receiver = RefCell::new(Some(r));
         let workspace = Rc::new(RefCell::new(Workspace::new()));
         let window = OnceCell::new();
@@ -92,7 +94,7 @@ impl EddyApplication {
         .unwrap();
 
         let args: Vec<String> = env::args().collect();
-        gio::prelude::ApplicationExtManual::run_with_args(&app, &args);
+        app.run_with_args(&args);
     }
 
     fn setup(&self) {}
@@ -114,6 +116,7 @@ impl EddyApplication {
         }
     */
     fn process_action(&self, action: Action) -> glib::Continue {
+        dbg!(&action);
         match action {
             Action::Open(pb) => self.show_err(self.action_open(&pb)),
             Action::BufferChange { view_id } => self.action_buffer_change(view_id),

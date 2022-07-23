@@ -1,7 +1,7 @@
 use super::Layer;
 use crate::language::capture::Capture;
 use crate::language::util::RopeTextProvider;
-use eddy_ts::{language, Language, Node, Parser, Query, QueryCursor, Tree};
+use eddy_ts::{language, InputEdit, Language, Node, Parser, Point, Query, QueryCursor, Tree};
 use ropey::Rope;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -69,13 +69,12 @@ impl Layer for GoLayer {
                 // println!("asked for {} {}, returned {:?}", byte_idx, pos, ret);
                 ret
             },
-            None, //self.tree.as_ref(),
+            self.tree.as_ref(),
         );
         if let Some(tree) = &self.tree {
             // super::print_tree(tree.root_node(), 0);
 
             self.node_to_capture.clear();
-            let query = GoLayer::highlights_query();
 
             fn rope_bytes_to_str<'a>(
                 rope: &'a Rope,
@@ -87,7 +86,11 @@ impl Layer for GoLayer {
             }
 
             let mut cursor = QueryCursor::new();
-            let captures = cursor.captures(&query, tree.root_node(), RopeTextProvider::new(rope));
+            let captures = cursor.captures(
+                &self.highlights_query,
+                tree.root_node(),
+                RopeTextProvider::new(rope),
+            );
             for cap in captures {
                 for c in cap.0.captures {
                     if let Some(capture) = self.capture(c.index as usize) {
@@ -95,6 +98,45 @@ impl Layer for GoLayer {
                     }
                 }
             }
+        }
+    }
+
+    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize) {
+        // all units here are in code points.
+        // tree sitter's "column" is the number of CODE POINTS since the start of the line
+        let start_byte = rope.char_to_byte(start);
+        let start_line = rope.char_to_line(start);
+        let start_col = start - rope.line_to_char(start_line);
+        let start_position = Point {
+            row: start_line,
+            column: start_col,
+        };
+
+        let old_end_byte = rope.char_to_byte(old_end);
+        let old_end_line = rope.char_to_line(old_end);
+        let old_end_col = old_end - rope.line_to_char(old_end_line);
+        let old_end_position = Point {
+            row: old_end_line,
+            column: old_end_col,
+        };
+
+        let new_end_byte = rope.char_to_byte(new_end);
+        let new_end_line = rope.char_to_line(new_end);
+        let new_end_col = new_end - rope.line_to_char(new_end_line);
+        let new_end_position = Point {
+            row: new_end_line,
+            column: new_end_col,
+        };
+
+        if let Some(tree) = &mut self.tree {
+            tree.edit(&InputEdit {
+                start_byte,
+                old_end_byte,
+                new_end_byte,
+                start_position,
+                old_end_position,
+                new_end_position,
+            });
         }
     }
 }

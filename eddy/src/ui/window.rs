@@ -85,11 +85,11 @@ impl EddyApplicationWindow {
         let sidebar_paned = gtk::Paned::new(Orientation::Horizontal);
         let dir_bar = DirBar::new();
         dir_bar.init(app_private.sender.clone());
-        sidebar_paned.set_start_child(&dir_bar);
+        sidebar_paned.set_start_child(Some(&dir_bar));
         sidebar_paned.set_resize_start_child(false);
         sidebar_paned.set_shrink_start_child(true);
 
-        sidebar_paned.set_end_child(&self_.notebook);
+        sidebar_paned.set_end_child(Some(&self_.notebook));
         sidebar_paned.set_resize_end_child(true);
         sidebar_paned.set_shrink_end_child(false);
 

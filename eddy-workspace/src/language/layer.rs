@@ -1,6 +1,7 @@
 use super::go::GoLayer;
 use super::rust::RustLayer;
 use crate::language::capture::Capture;
+use crate::Range;
 use eddy_ts::Tree;
 use ropey::Rope;
 use std::path::Path;
@@ -9,6 +10,16 @@ pub trait Layer {
     fn capture_from_node(&self, id: usize) -> Option<Capture>;
     fn update_highlights(&mut self, rope: &Rope);
     fn tree(&self) -> Option<&Tree>;
+    /// edit the tree, so tree-sitter can know what changed. All units are in code points.
+    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize);
+    /// edit the tree, so tree-sitter can know what changed. All units are in code points.
+    fn edit_tree_remove(&mut self, rope: &Rope, start: usize, old_end: usize) {
+        self.edit_tree(rope, start, old_end, start);
+    }
+    /// edit the tree, so tree-sitter can know what changed. All units are in code points.
+    fn edit_tree_insert(&mut self, rope: &Rope, start: usize, new_end: usize) {
+        self.edit_tree(rope, start, start, new_end);
+    }
 }
 
 pub fn layer_from_path(path: &Path) -> Box<dyn Layer> {
@@ -42,6 +53,7 @@ impl Layer for NilLayer {
     fn tree(&self) -> Option<&Tree> {
         None
     }
+    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize) {}
 }
 
 pub fn print_tree(node: eddy_ts::Node, level: u32) {

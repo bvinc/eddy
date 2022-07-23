@@ -1009,7 +1009,6 @@ impl CodeViewText {
                             buffer.borrow_mut().redo(view_id);
                         }
                         c if (norm) && c >= '\u{0020}' => {
-                            debug!("inserting key");
                             buffer.borrow_mut().insert(view_id, &c.to_string());
                         }
                         _ => {

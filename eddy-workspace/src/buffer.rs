@@ -182,6 +182,8 @@ impl Buffer {
 
         let rope = &mut self.rope;
         rope.remove(char_range);
+        self.layer
+            .edit_tree_remove(rope, char_range.start, char_range.end);
 
         // Update all the selections
         let size = char_range.end - char_range.start;
@@ -213,6 +215,9 @@ impl Buffer {
         let rope = &mut self.rope;
         let text = self.line_ending.normalize(text);
         rope.insert(char_idx, &text);
+        self.layer
+            .edit_tree_insert(rope, char_idx, char_idx + text.chars().count());
+
         let size = text.chars().count();
         for sels in &mut self.selections.values_mut() {
             for sel in &mut sels.sels {
@@ -244,8 +249,11 @@ impl Buffer {
         self.history
             .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
+        debug!("on text change start");
         self.on_text_change();
+        debug!("on text change end");
         self.scroll_to_selections(view_id);
+        debug!("scroll to sels end");
     }
 
     /// Insert a newline at every selection point of a view
