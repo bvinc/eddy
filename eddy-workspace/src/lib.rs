@@ -8,6 +8,7 @@ mod language;
 mod line_ending;
 mod lsp;
 mod msg;
+mod point;
 mod range;
 mod selection;
 pub mod style;
@@ -16,6 +17,7 @@ mod workspace;
 
 pub use buffer::*;
 pub use msg::*;
+pub use point::*;
 pub use range::*;
 pub use selection::*;
 pub use workspace::*;

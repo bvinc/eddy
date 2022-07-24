@@ -1,7 +1,8 @@
 use super::Layer;
 use crate::language::capture::Capture;
 use crate::language::util::RopeTextProvider;
-use eddy_ts::{language, InputEdit, Language, Node, Parser, Point, Query, QueryCursor, Tree};
+use crate::Point;
+use eddy_ts::{language, InputEdit, Language, Node, Parser, Query, QueryCursor, Tree};
 use ropey::Rope;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -54,6 +55,9 @@ impl Layer for GoLayer {
     fn capture_from_node(&self, id: usize) -> Option<Capture> {
         self.node_to_capture.get(&id).map(|c| *c)
     }
+    fn unset_tree(&mut self) {
+        self.tree = None;
+    }
     fn tree(&self) -> Option<&Tree> {
         self.tree.as_ref()
     }
@@ -101,41 +105,24 @@ impl Layer for GoLayer {
         }
     }
 
-    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize) {
-        // all units here are in code points.
-        // tree sitter's "column" is the number of CODE POINTS since the start of the line
-        let start_byte = rope.char_to_byte(start);
-        let start_line = rope.char_to_line(start);
-        let start_col = start - rope.line_to_char(start_line);
-        let start_position = Point {
-            row: start_line,
-            column: start_col,
-        };
-
-        let old_end_byte = rope.char_to_byte(old_end);
-        let old_end_line = rope.char_to_line(old_end);
-        let old_end_col = old_end - rope.line_to_char(old_end_line);
-        let old_end_position = Point {
-            row: old_end_line,
-            column: old_end_col,
-        };
-
-        let new_end_byte = rope.char_to_byte(new_end);
-        let new_end_line = rope.char_to_line(new_end);
-        let new_end_col = new_end - rope.line_to_char(new_end_line);
-        let new_end_position = Point {
-            row: new_end_line,
-            column: new_end_col,
-        };
-
+    fn edit_tree(&mut self, start: Point, old_end: Point, new_end: Point) {
         if let Some(tree) = &mut self.tree {
             tree.edit(&InputEdit {
-                start_byte,
-                old_end_byte,
-                new_end_byte,
-                start_position,
-                old_end_position,
-                new_end_position,
+                start_byte: start.byte,
+                old_end_byte: old_end.byte,
+                new_end_byte: new_end.byte,
+                start_position: eddy_ts::Point {
+                    row: start.line,
+                    column: start.col,
+                },
+                old_end_position: eddy_ts::Point {
+                    row: old_end.line,
+                    column: old_end.col,
+                },
+                new_end_position: eddy_ts::Point {
+                    row: new_end.line,
+                    column: new_end.col,
+                },
             });
         }
     }

@@ -6,7 +6,7 @@ use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
-use crate::{BufferId, Msg, MsgSender, Range, Selection, ViewId};
+use crate::{BufferId, Msg, MsgSender, Point, Range, Selection, ViewId};
 use anyhow::bail;
 use log::*;
 use ropey::{Rope, RopeSlice};
@@ -152,6 +152,15 @@ impl Buffer {
         }
     }
 
+    /// Converts char index (code points) into a byte index, the line, and the
+    /// col (code points from beginning of line)
+    fn char_to_point(&self, char: usize) -> Point {
+        let byte = self.rope.char_to_byte(char);
+        let line = self.rope.char_to_line(char);
+        let col = char - self.rope.line_to_char(line);
+        Point { byte, line, col }
+    }
+
     fn on_text_change(&mut self) {
         let start = Instant::now();
         self.layer.update_highlights(&self.rope);
@@ -180,10 +189,10 @@ impl Buffer {
             return;
         }
 
-        let rope = &mut self.rope;
-        rope.remove(char_range);
-        self.layer
-            .edit_tree_remove(rope, char_range.start, char_range.end);
+        let start = self.char_to_point(char_range.start);
+        let old_end = self.char_to_point(char_range.end);
+        self.rope.remove(char_range);
+        self.layer.edit_tree_remove(start, old_end);
 
         // Update all the selections
         let size = char_range.end - char_range.start;
@@ -215,8 +224,9 @@ impl Buffer {
         let rope = &mut self.rope;
         let text = self.line_ending.normalize(text);
         rope.insert(char_idx, &text);
-        self.layer
-            .edit_tree_insert(rope, char_idx, char_idx + text.chars().count());
+        let start = self.char_to_point(char_idx);
+        let new_end = self.char_to_point(char_idx + text.chars().count());
+        self.layer.edit_tree_insert(start, new_end);
 
         let size = text.chars().count();
         for sels in &mut self.selections.values_mut() {
@@ -249,11 +259,8 @@ impl Buffer {
         self.history
             .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
-        debug!("on text change start");
         self.on_text_change();
-        debug!("on text change end");
         self.scroll_to_selections(view_id);
-        debug!("scroll to sels end");
     }
 
     /// Insert a newline at every selection point of a view
@@ -1161,6 +1168,10 @@ impl Buffer {
             let sels = self.selections.entry(view_id).or_default();
             sels.sels.clear();
             sels.sels.extend_from_slice(new_sels);
+
+            // Just redo highlighting entirely.  It's probably not worth it to
+            // store a copy of the rope and the InputEdit for every micro-edit.
+            self.layer.unset_tree();
         }
 
         self.fix_selections();
@@ -1175,6 +1186,10 @@ impl Buffer {
             let sels = self.selections.entry(view_id).or_default();
             sels.sels.clear();
             sels.sels.extend_from_slice(new_sels);
+
+            // Just redo highlighting entirely.  It's probably not worth it to
+            // store a copy of the rope and the InputEdit for every micro-edit.
+            self.layer.unset_tree();
         }
 
         self.fix_selections();

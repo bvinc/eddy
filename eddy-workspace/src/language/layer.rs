@@ -1,7 +1,7 @@
 use super::go::GoLayer;
 use super::rust::RustLayer;
 use crate::language::capture::Capture;
-use crate::Range;
+use crate::{Point, Range};
 use eddy_ts::Tree;
 use ropey::Rope;
 use std::path::Path;
@@ -9,16 +9,17 @@ pub trait Layer {
     fn capture(&self, idx: usize) -> Option<Capture>;
     fn capture_from_node(&self, id: usize) -> Option<Capture>;
     fn update_highlights(&mut self, rope: &Rope);
+    fn unset_tree(&mut self);
     fn tree(&self) -> Option<&Tree>;
     /// edit the tree, so tree-sitter can know what changed. All units are in code points.
-    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize);
+    fn edit_tree(&mut self, start: Point, old_end: Point, new_end: Point);
     /// edit the tree, so tree-sitter can know what changed. All units are in code points.
-    fn edit_tree_remove(&mut self, rope: &Rope, start: usize, old_end: usize) {
-        self.edit_tree(rope, start, old_end, start);
+    fn edit_tree_remove(&mut self, start: Point, old_end: Point) {
+        self.edit_tree(start, old_end, start);
     }
     /// edit the tree, so tree-sitter can know what changed. All units are in code points.
-    fn edit_tree_insert(&mut self, rope: &Rope, start: usize, new_end: usize) {
-        self.edit_tree(rope, start, start, new_end);
+    fn edit_tree_insert(&mut self, start: Point, new_end: Point) {
+        self.edit_tree(start, start, new_end);
     }
 }
 
@@ -50,10 +51,11 @@ impl Layer for NilLayer {
         None
     }
     fn update_highlights(&mut self, _rope: &Rope) {}
+    fn unset_tree(&mut self) {}
     fn tree(&self) -> Option<&Tree> {
         None
     }
-    fn edit_tree(&mut self, rope: &Rope, start: usize, old_end: usize, new_end: usize) {}
+    fn edit_tree(&mut self, start: Point, old_end: Point, new_end: Point) {}
 }
 
 pub fn print_tree(node: eddy_ts::Node, level: u32) {

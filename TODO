@@ -1,5 +1,7 @@
-* Performance problem when editing syntax highlighted file
 * Need a view port thingy on the left bar so it can scroll
+* New files should take focus
+* Opening the same file twice should focus the file already open
+* page up and down don't do a full page
 
 * Need to edit GTK:
   * tab should not render an arrow
