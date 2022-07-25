@@ -158,7 +158,12 @@ impl Buffer {
         let byte = self.rope.char_to_byte(char);
         let line = self.rope.char_to_line(char);
         let col = char - self.rope.line_to_char(line);
-        Point { byte, line, col }
+        Point {
+            byte,
+            char,
+            line,
+            col,
+        }
     }
 
     fn on_text_change(&mut self) {

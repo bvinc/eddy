@@ -17,6 +17,7 @@ use ropey::RopeSlice;
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::cmp::{max, min};
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -30,6 +31,7 @@ pub struct GutterPrivate {
     view_id: Cell<usize>,
     theme: Theme,
     gutter_nchars: Cell<usize>,
+    highlighted_lines: RefCell<HashSet<usize>>,
 }
 
 #[glib::object_subclass]
@@ -55,6 +57,7 @@ impl ObjectSubclass for GutterPrivate {
             view_id,
             theme,
             gutter_nchars,
+            highlighted_lines: RefCell::new(HashSet::new()),
         }
     }
 }
@@ -75,15 +78,6 @@ impl WidgetImpl for GutterPrivate {
         // snapshot.render_layout(&ctx, 10.0, 10.0, &layout);
         // snapshot.render_background(&ctx, 10.0, 10.0, 30.0, 20.0);
         self.handle_draw(gutter, snapshot);
-    }
-    fn compute_expand(&self, obj: &Self::Type, hexpand: &mut bool, vexpand: &mut bool) {
-        self.parent_compute_expand(obj, hexpand, vexpand);
-        debug!("gutter compute expand");
-        dbg!(hexpand, vexpand);
-    }
-    fn map(&self, obj: &Self::Type) {
-        self.parent_map(obj);
-        debug!("gutter cvt map");
     }
     fn measure(
         &self,
@@ -112,9 +106,6 @@ impl WidgetImpl for GutterPrivate {
             (0, 0, -1, -1)
         }
     }
-    fn show(&self, _: &Self::Type) {
-        debug!("gutter cvt show");
-    }
     fn size_allocate(&self, obj: &Self::Type, w: i32, h: i32, bl: i32) {
         self.parent_size_allocate(obj, w, h, bl);
         // dbg!(w, h, bl);
@@ -131,7 +122,7 @@ impl GutterPrivate {
     }
 
     fn buffer_changed(&self, gutter: &Gutter) {
-        let mut workspace = self.workspace.get().unwrap().borrow_mut();
+        let workspace = self.workspace.get().unwrap().borrow_mut();
         let view_id = self.view_id.get();
         let (buffer, _) = workspace.buffer_and_theme(view_id);
         let max_line_num = buffer.borrow().len_lines();
@@ -149,7 +140,7 @@ impl GutterPrivate {
         let da_width = cv.allocated_width();
         let da_height = cv.allocated_height();
 
-        let mut workspace = self.workspace.get().unwrap().borrow_mut();
+        let workspace = self.workspace.get().unwrap().borrow_mut();
         let view_id = self.view_id.get();
         let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
@@ -168,11 +159,9 @@ impl GutterPrivate {
         let pango_ctx = cv.pango_context();
         let mut font_height = 15.0;
         let mut font_ascent = 15.0;
-        let mut font_width = 15.0;
         if let Some(metrics) = pango_ctx.metrics(None, None) {
             font_height = metrics.height() as f64 / pango::SCALE as f64;
             font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
-            font_width = metrics.approximate_digit_width() as f64 / pango::SCALE as f64;
         }
 
         // cv.size_allocate(Rectangle::new(), -1);
@@ -182,8 +171,6 @@ impl GutterPrivate {
         let last_line = min(last_line, num_lines);
         let visible_lines = first_line..last_line;
         // debug!("visible lines {} {}", first_line, last_line);
-
-        let pango_ctx = cv.pango_context();
 
         // Draw background
         // need to set color to text_theme.background?
@@ -200,9 +187,9 @@ impl GutterPrivate {
         let mut highlight_bg_color = gdk::RGBA::WHITE;
         change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
         change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
-        for i in first_line..last_line {
+        for line in first_line..last_line {
             for sel in buffer.borrow().selections(view_id) {
-                if buffer.borrow().char_to_line(sel.cursor()) != i {
+                if buffer.borrow().char_to_line(sel.cursor()) != line {
                     continue;
                 }
 
@@ -210,7 +197,7 @@ impl GutterPrivate {
                     &highlight_bg_color,
                     &graphene::Rect::new(
                         0.0,
-                        font_height as f32 * (i as f32) - vadj_value as f32,
+                        font_height as f32 * (line as f32) - vadj_value as f32,
                         da_width as f32,
                         font_height as f32,
                     ),
@@ -229,33 +216,33 @@ impl GutterPrivate {
         // Calculate ordinal or max line length
         let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
 
-        for i in visible_lines {
+        // Figures out which of our lines need highlighting
+        let mut highlighted_lines = self.highlighted_lines.borrow_mut();
+        highlighted_lines.clear();
+        for sel in buffer.borrow().selections(view_id) {
+            let line = buffer.borrow().char_to_line(sel.cursor());
+            if visible_lines.contains(&line) {
+                highlighted_lines.insert(line);
+            }
+        }
+
+        for line in visible_lines {
             let mut fg_color = gdk::RGBA::BLACK;
             change_to_color(&mut fg_color, text_theme.gutter.fg);
 
-            for sel in buffer.borrow().selections(view_id) {
-                if buffer.borrow().char_to_line(sel.cursor()) != i {
-                    continue;
-                }
+            if highlighted_lines.contains(&line) {
                 change_to_color(&mut fg_color, text_theme.gutter_line_highlight.fg);
-                break;
             }
 
-            // Keep track of the starting x position
-            if let Some((_, _)) = buffer
-                .borrow()
-                .get_line_with_attributes(view_id, i, &text_theme)
-            {
-                self.append_text_to_snapshot(
-                    cv,
-                    fg_color,
-                    snapshot,
-                    &format!("{:>offset$}", i + 1, offset = nchars + 1),
-                    pango::AttrList::new(),
-                    0.0,
-                    font_ascent as f32 + font_height as f32 * (i as f32) - vadj_value as f32,
-                );
-            }
+            self.append_text_to_snapshot(
+                cv,
+                fg_color,
+                snapshot,
+                &format!("{:>offset$}", line + 1, offset = nchars + 1),
+                pango::AttrList::new(),
+                0.0,
+                font_ascent as f32 + font_height as f32 * (line as f32) - vadj_value as f32,
+            );
         }
 
         let draw_end = Instant::now();

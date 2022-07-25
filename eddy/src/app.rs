@@ -116,7 +116,7 @@ impl EddyApplication {
         }
     */
     fn process_action(&self, action: Action) -> glib::Continue {
-        dbg!(&action);
+        debug!("{:?}", &action);
         match action {
             Action::Open(pb) => self.show_err(self.action_open(&pb)),
             Action::BufferChange { view_id } => self.action_buffer_change(view_id),

@@ -19,7 +19,7 @@ use log::*;
 use lru_cache::LruCache;
 use once_cell::sync::Lazy;
 use once_cell::unsync::OnceCell;
-use pango::{AttrColor, Attribute, FontDescription, GlyphInfo};
+use pango::{AttrColor, AttrList, Attribute, FontDescription, GlyphGeometry, GlyphInfo};
 use ropey::RopeSlice;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -40,11 +40,20 @@ pub struct CodeViewTextPrivate {
     sender: OnceCell<Sender<Action>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
+    font_metrics: RefCell<FontMetrics>,
     theme: Theme,
     gesture_drag: gtk::GestureDrag,
     // When starting a double-click drag or triple-click drag, the initial
     // selection is saved here.
     drag_anchor: Selection,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct FontMetrics {
+    space_width: f64,
+    space_glyph: u32,
+    font_height: f64,
+    font_ascent: f64,
 }
 
 #[glib::object_subclass]
@@ -60,6 +69,7 @@ impl ObjectSubclass for CodeViewTextPrivate {
         let sender = OnceCell::new();
         let workspace = OnceCell::new();
         let view_id = Cell::new(0);
+        let font_metrics = RefCell::new(FontMetrics::default());
         let theme = Theme::default();
 
         let hadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
@@ -73,6 +83,7 @@ impl ObjectSubclass for CodeViewTextPrivate {
             sender,
             workspace,
             view_id,
+            font_metrics,
             theme,
             gesture_drag: gtk::GestureDrag::new(),
             drag_anchor: Selection::new(),
@@ -147,6 +158,7 @@ impl ObjectImpl for CodeViewTextPrivate {
         font_desc.set_family("Hack, Mono");
         font_desc.set_size(16384);
         pango_ctx.set_font_description(&font_desc);
+        CodeViewTextPrivate::from_instance(obj).on_font_change(obj);
 
         obj.set_focusable(true);
         obj.set_can_focus(true);
@@ -240,15 +252,42 @@ impl BoxImpl for CodeViewTextPrivate {}
 impl ScrollableImpl for CodeViewTextPrivate {}
 
 impl CodeViewTextPrivate {
-    fn font_height(&self, cvt: &CodeViewText) -> (f64, f64) {
+    fn on_font_change(&self, cvt: &CodeViewText) {
+        // let pango_attrs = self.create_pango_attr_list(&attrs);
         let pango_ctx = cvt.pango_context();
-        let mut font_height = 15.0;
-        let mut font_ascent = 15.0;
+
+        self.font_metrics.borrow_mut().font_height = 15.0;
+        self.font_metrics.borrow_mut().font_ascent = 15.0;
         if let Some(metrics) = pango_ctx.metrics(None, None) {
-            font_height = metrics.height() as f64 / pango::SCALE as f64;
-            font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
+            self.font_metrics.borrow_mut().font_height =
+                metrics.height() as f64 / pango::SCALE as f64;
+            self.font_metrics.borrow_mut().font_ascent =
+                metrics.ascent() as f64 / pango::SCALE as f64;
         }
-        (font_height, font_ascent)
+
+        let space = " ";
+        // Itemize
+        let items = pango::itemize_with_base_dir(
+            &pango_ctx,
+            pango::Direction::Ltr,
+            space,
+            0,
+            space.len() as i32,
+            &AttrList::new(),
+            None,
+        );
+
+        if items.len() > 0 && items[0].offset() == 0 && items[0].length() == 1 {
+            let item = &items[0];
+            let mut glyphs = pango::GlyphString::new();
+            pango::shape_full(space, None, item.analysis(), &mut glyphs);
+            let glyph_info = glyphs.glyph_info();
+            if glyph_info.len() > 0 {
+                self.font_metrics.borrow_mut().space_glyph = glyph_info[0].glyph();
+                self.font_metrics.borrow_mut().space_width =
+                    glyph_info[0].geometry().width() as f64 / pango::SCALE as f64;
+            }
+        }
     }
 
     fn get_buffer(&self) -> Rc<RefCell<Buffer>> {
@@ -266,7 +305,7 @@ impl CodeViewTextPrivate {
     fn reset_vadj_upper(&self, cvt: &CodeViewText) {
         let buffer = self.get_buffer();
 
-        let (font_height, _) = self.font_height(cvt);
+        let font_height = self.font_metrics.borrow().font_height;
         let text_height = buffer.borrow().len_lines() as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
@@ -282,7 +321,7 @@ impl CodeViewTextPrivate {
 
     fn scroll_to_carets(&self, cvt: &CodeViewText) {
         let buffer = self.get_buffer();
-        let (font_height, _) = self.font_height(cvt);
+        let font_height = self.font_metrics.borrow().font_height;
         let buffer = buffer.borrow();
         let selections = buffer.selections(self.view_id.get());
 
@@ -396,7 +435,7 @@ impl CodeViewTextPrivate {
         // highlighted lines of text.  Since they're rounded for drawing I
         // guess they should be rounded here.
         let vadj_value = f64::round(self.vadj.borrow().value());
-        let (font_height, _) = self.font_height(cvt);
+        let font_height = self.font_metrics.borrow().font_height;
 
         let line = ((vadj_value + y) / font_height) as usize;
         let layout_line = self.make_layout_line(cvt, line);
@@ -491,7 +530,7 @@ impl CodeViewTextPrivate {
             .drag_update(self.view_id.get(), line, idx);
     }
 
-    fn drag_end(&self, cvt: &CodeViewText) {
+    fn drag_end(&self, _cvt: &CodeViewText) {
         let buffer = self
             .workspace
             .get()
@@ -504,12 +543,7 @@ impl CodeViewTextPrivate {
     fn handle_draw(&self, cvt: &CodeViewText, snapshot: &gtk::Snapshot) {
         let draw_start = Instant::now();
 
-        // let css_provider = gtk::CssProvider::new();
-        // css_provider.load_from_data("* { background-color: #000000; }".as_bytes());
-        let ctx = cvt.style_context();
-        // ctx.add_provider(&css_provider, 1);
-        // let foreground = self.model.main_state.borrow().theme.foreground;
-        let theme = &self.theme;
+        let _theme = &self.theme;
 
         let da_width = cvt.allocated_width();
         let da_height = cvt.allocated_height();
@@ -547,7 +581,8 @@ impl CodeViewTextPrivate {
             vadj.borrow().upper()
         );
 
-        let (font_height, font_ascent) = self.font_height(cvt);
+        let font_height = self.font_metrics.borrow().font_height;
+        let font_ascent = self.font_metrics.borrow().font_ascent;
 
         let first_line = (vadj_value / font_height) as usize;
         let last_line = ((vadj_value + f64::from(da_height)) / font_height) as usize + 1;
@@ -581,13 +616,7 @@ impl CodeViewTextPrivate {
                         font_height as f32,
                     ),
                 );
-
-                let clip_node = gtk::gsk::ClipNode::new(
-                    &rect_node,
-                    &graphene::Rect::new(0.0, 0.0, da_width as f32, da_height as f32),
-                );
-
-                snapshot.append_node(&clip_node);
+                append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
                 break;
             }
         }
@@ -595,102 +624,83 @@ impl CodeViewTextPrivate {
         // Loop through the visible lines
         let mut max_width = 0;
         for line_num in visible_lines {
-            let mut layout_line = LayoutLine::new();
-            // Keep track of the starting x position
-            if let Some((line, attrs)) =
-                buffer
-                    .borrow()
-                    .get_line_with_attributes(view_id, line_num, &text_theme)
-            {
-                let text: Cow<str> = line.into();
+            let line_x = -hadj_value as f32;
+            let line_y =
+                font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
 
-                let pango_attrs = self.create_pango_attr_list(&attrs);
-                let line_x = -hadj_value as f32;
-                let line_y =
-                    font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
-                let pango_ctx = cvt.pango_context();
+            let mut layout_line = self.make_layout_line(cvt, line_num);
+            // Loop through the items
+            for item in &mut layout_line.items {
+                let mut bg_color: Option<gdk::RGBA> = None;
+                let mut fg_color = text_theme_to_gdk(text_theme.fg);
 
-                let mut layout_line = self.make_layout_line(cvt, line_num);
-                // Loop through the items
-                for item in &mut layout_line.items {
-                    let item_text = unsafe {
-                        std::str::from_utf8_unchecked(
-                            &text.as_bytes()[item.offset() as usize
-                                ..item.offset() as usize + item.length() as usize],
-                        )
-                    };
-
-                    let mut bg_color: Option<gdk::RGBA> = None;
-                    let mut fg_color = text_theme_to_gdk(text_theme.fg);
-
-                    for attr in &item.analysis().extra_attrs() {
-                        if attr.type_() == pango::AttrType::Foreground {
-                            if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                                fg_color = pango_to_gdk(ca.color());
-                            }
-                        }
-                        if attr.type_() == pango::AttrType::Background {
-                            if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
-                                bg_color = Some(pango_to_gdk(ca.color()));
-                            }
+                for attr in &item.analysis().extra_attrs() {
+                    if attr.type_() == pango::AttrType::Foreground {
+                        if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
+                            fg_color = pango_to_gdk(ca.color());
                         }
                     }
-
-                    // Append text background node to snapshot
-                    if let Some(bg_color) = bg_color {
-                        let rect_node = gtk::gsk::ColorNode::new(
-                            &bg_color,
-                            &graphene::Rect::new(
-                                line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
-                                line_y - font_ascent as f32,
-                                item.width as f32 / pango::SCALE as f32,
-                                font_height as f32,
-                            ),
-                        );
-                        append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
-                    }
-
-                    // Append text node to snapshot
-                    if let Some(text_node) = gtk::gsk::TextNode::new(
-                        &item.analysis().font(),
-                        &mut item.glyphs,
-                        &fg_color,
-                        &graphene::Point::new(
-                            line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
-                            line_y,
-                        ),
-                    ) {
-                        append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
-                    }
-
-                    if item.x_off > max_width {
-                        max_width = item.x_off;
+                    if attr.type_() == pango::AttrType::Background {
+                        if let Some(ca) = attr.downcast_ref::<pango::AttrColor>() {
+                            bg_color = Some(pango_to_gdk(ca.color()));
+                        }
                     }
                 }
 
-                // Draw the cursors on the line
-                for sel in buffer.borrow().selections(view_id) {
-                    if buffer.borrow().char_to_line(sel.cursor()) != line_num {
-                        continue;
-                    }
-                    let line_byte = buffer.borrow().char_to_byte(sel.cursor())
-                        - buffer.borrow().line_to_byte(line_num);
-                    let x = layout_line.index_to_x(line_byte) as f32 / pango::SCALE as f32;
-
-                    let color = text_theme_to_gdk(text_theme.fg);
-
+                // Append text background node to snapshot
+                if let Some(bg_color) = bg_color {
                     let rect_node = gtk::gsk::ColorNode::new(
-                        &color,
+                        &bg_color,
                         &graphene::Rect::new(
-                            x - hadj_value as f32,
+                            line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
                             line_y - font_ascent as f32,
-                            CURSOR_WIDTH as f32,
+                            item.width as f32 / pango::SCALE as f32,
                             font_height as f32,
                         ),
                     );
-
                     append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
                 }
+
+                // Append text node to snapshot
+                if let Some(text_node) = gtk::gsk::TextNode::new(
+                    &item.analysis().font(),
+                    &mut item.glyphs,
+                    &fg_color,
+                    &graphene::Point::new(
+                        line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
+                        line_y,
+                    ),
+                ) {
+                    append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
+                }
+
+                if item.x_off > max_width {
+                    max_width = item.x_off;
+                }
+            }
+
+            // Draw the cursors on the line
+            for sel in buffer.borrow().selections(view_id) {
+                if buffer.borrow().char_to_line(sel.cursor()) != line_num {
+                    continue;
+                }
+                let line_byte = buffer.borrow().char_to_byte(sel.cursor())
+                    - buffer.borrow().line_to_byte(line_num);
+                let x = layout_line.index_to_x(line_byte) as f32 / pango::SCALE as f32;
+
+                let color = text_theme_to_gdk(text_theme.fg);
+
+                let rect_node = gtk::gsk::ColorNode::new(
+                    &color,
+                    &graphene::Rect::new(
+                        x - hadj_value as f32,
+                        line_y - font_ascent as f32,
+                        CURSOR_WIDTH as f32,
+                        font_height as f32,
+                    ),
+                );
+
+                append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
             }
         }
 
@@ -779,17 +789,20 @@ impl CodeViewTextPrivate {
         glyphs: &mut pango::GlyphString,
     ) {
         let glyph_info = glyphs.glyph_info_mut();
-        // dbg!(&glyph_info);
         if glyph_info.len() == 0 {
             return;
         }
-        // dbg!(&text, item.offset());
         if text.bytes().nth(item.offset() as usize) == Some(b'\t') {
-            dbg!("adjusting tab at", item.offset());
-            glyph_info[0].geometry_mut().set_width(1024 * 100);
+            unsafe {
+                let mut ptr = std::mem::transmute::<&GlyphInfo, *mut pango::ffi::PangoGlyphInfo>(
+                    &glyph_info[0],
+                );
+                (*ptr).glyph = self.font_metrics.borrow().space_glyph;
+            }
+            glyph_info[0]
+                .geometry_mut()
+                .set_width((self.font_metrics.borrow().space_width * 4.0) as i32 * pango::SCALE);
         }
-        // for gi in &mut glyphs.glyph_info() {
-        // }
     }
 }
 
@@ -861,7 +874,7 @@ impl CodeViewText {
         self_.gesture_drag(self, x, y);
     }
 
-    fn drag_end(&self, gd: &gtk::GestureDrag) {
+    fn drag_end(&self, _gd: &gtk::GestureDrag) {
         let self_ = CodeViewTextPrivate::from_instance(self);
         self_.drag_end(self);
     }
@@ -874,7 +887,7 @@ impl CodeViewText {
     //     self.do_paste_primary(&self.view_id, line, col);
     // }
 
-    fn key_pressed(&self, key: Key, keycode: u32, state: ModifierType) {
+    fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
         let self_ = CodeViewTextPrivate::from_instance(self);
         debug!(
             "key press keyval={:?}, state={:?}, uc={:?}",
