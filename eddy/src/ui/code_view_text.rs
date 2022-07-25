@@ -25,8 +25,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cell::{Cell, RefMut};
 use std::cmp::{max, min};
-use std::collections::hash_map;
 use std::collections::HashMap;
+use std::collections::{hash_map, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -46,6 +46,7 @@ pub struct CodeViewTextPrivate {
     // When starting a double-click drag or triple-click drag, the initial
     // selection is saved here.
     drag_anchor: Selection,
+    highlighted_lines: RefCell<HashSet<usize>>,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -87,6 +88,7 @@ impl ObjectSubclass for CodeViewTextPrivate {
             theme,
             gesture_drag: gtk::GestureDrag::new(),
             drag_anchor: Selection::new(),
+            highlighted_lines: RefCell::new(HashSet::new()),
         }
     }
 }
@@ -597,28 +599,35 @@ impl CodeViewTextPrivate {
         );
         snapshot.append_node(&rect_node);
 
+        // Figure out which of our lines need highlighting
+        let mut highlighted_lines = self.highlighted_lines.borrow_mut();
+        highlighted_lines.clear();
+        for sel in buffer.borrow().selections(view_id) {
+            let line = buffer.borrow().char_to_line(sel.cursor());
+            if sel.is_caret() && visible_lines.contains(&line) {
+                highlighted_lines.insert(line);
+            }
+        }
+
         // Highlight cursor lines
         let mut highlight_bg_color = gdk::RGBA::WHITE;
         change_to_color(&mut highlight_bg_color, Some(text_theme.bg));
         change_to_color(&mut highlight_bg_color, text_theme.line_highlight.bg);
-        for i in first_line..last_line {
-            for sel in buffer.borrow().selections(view_id) {
-                if !sel.is_caret() || buffer.borrow().char_to_line(sel.cursor()) != i {
-                    continue;
-                }
-
-                let rect_node = gtk::gsk::ColorNode::new(
-                    &highlight_bg_color,
-                    &graphene::Rect::new(
-                        0.0,
-                        font_height as f32 * (i as f32) - vadj_value as f32,
-                        da_width as f32,
-                        font_height as f32,
-                    ),
-                );
-                append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
-                break;
+        for line in first_line..last_line {
+            if !highlighted_lines.contains(&line) {
+                continue;
             }
+
+            let rect_node = gtk::gsk::ColorNode::new(
+                &highlight_bg_color,
+                &graphene::Rect::new(
+                    0.0,
+                    font_height as f32 * (line as f32) - vadj_value as f32,
+                    da_width as f32,
+                    font_height as f32,
+                ),
+            );
+            append_clipped_node(snapshot, rect_node, da_width, da_height);
         }
 
         // Loop through the visible lines
@@ -658,7 +667,7 @@ impl CodeViewTextPrivate {
                             font_height as f32,
                         ),
                     );
-                    append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
+                    append_clipped_node(snapshot, rect_node, da_width, da_height);
                 }
 
                 // Append text node to snapshot
@@ -671,7 +680,7 @@ impl CodeViewTextPrivate {
                         line_y,
                     ),
                 ) {
-                    append_clipped_node(snapshot, text_node, da_width as f32, da_height as f32);
+                    append_clipped_node(snapshot, text_node, da_width, da_height);
                 }
 
                 if item.x_off > max_width {
@@ -700,7 +709,7 @@ impl CodeViewTextPrivate {
                     ),
                 );
 
-                append_clipped_node(snapshot, rect_node, da_width as f32, da_height as f32);
+                append_clipped_node(snapshot, rect_node, da_width, da_height);
             }
         }
 
@@ -1037,10 +1046,11 @@ impl CodeViewText {
 fn append_clipped_node<P: AsRef<gtk::gsk::RenderNode>>(
     snapshot: &gtk::Snapshot,
     node: P,
-    w: f32,
-    h: f32,
+    w: i32,
+    h: i32,
 ) {
-    let clip_node = gtk::gsk::ClipNode::new(&node, &graphene::Rect::new(0.0, 0.0, w, h));
+    let clip_node =
+        gtk::gsk::ClipNode::new(&node, &graphene::Rect::new(0.0, 0.0, w as f32, h as f32));
     snapshot.append_node(&clip_node);
 }
 

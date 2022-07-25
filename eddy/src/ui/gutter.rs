@@ -183,40 +183,7 @@ impl GutterPrivate {
         );
         snapshot.append_node(&rect_node);
 
-        // Highlight cursor lines
-        let mut highlight_bg_color = gdk::RGBA::WHITE;
-        change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
-        change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
-        for line in first_line..last_line {
-            for sel in buffer.borrow().selections(view_id) {
-                if buffer.borrow().char_to_line(sel.cursor()) != line {
-                    continue;
-                }
-
-                let rect_node = gtk::gsk::ColorNode::new(
-                    &highlight_bg_color,
-                    &graphene::Rect::new(
-                        0.0,
-                        font_height as f32 * (line as f32) - vadj_value as f32,
-                        da_width as f32,
-                        font_height as f32,
-                    ),
-                );
-
-                let clip_node = gtk::gsk::ClipNode::new(
-                    &rect_node,
-                    &graphene::Rect::new(0.0, 0.0, da_width as f32, da_height as f32),
-                );
-
-                snapshot.append_node(&clip_node);
-                break;
-            }
-        }
-
-        // Calculate ordinal or max line length
-        let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
-
-        // Figures out which of our lines need highlighting
+        // Figure out which of our lines need highlighting
         let mut highlighted_lines = self.highlighted_lines.borrow_mut();
         highlighted_lines.clear();
         for sel in buffer.borrow().selections(view_id) {
@@ -225,6 +192,26 @@ impl GutterPrivate {
                 highlighted_lines.insert(line);
             }
         }
+
+        // Highlight cursor lines
+        let mut highlight_bg_color = gdk::RGBA::WHITE;
+        change_to_color(&mut highlight_bg_color, text_theme.gutter.bg);
+        change_to_color(&mut highlight_bg_color, text_theme.gutter_line_highlight.bg);
+        for &line in highlighted_lines.iter() {
+            let rect_node = gtk::gsk::ColorNode::new(
+                &highlight_bg_color,
+                &graphene::Rect::new(
+                    0.0,
+                    font_height as f32 * (line as f32) - vadj_value as f32,
+                    da_width as f32,
+                    font_height as f32,
+                ),
+            );
+            append_clipped_node(snapshot, rect_node, da_width, da_height);
+        }
+
+        // Calculate ordinal or max line length
+        let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
 
         for line in visible_lines {
             let mut fg_color = gdk::RGBA::BLACK;
@@ -308,6 +295,17 @@ impl GutterPrivate {
             x_off += width;
         }
     }
+}
+
+fn append_clipped_node<P: AsRef<gtk::gsk::RenderNode>>(
+    snapshot: &gtk::Snapshot,
+    node: P,
+    w: i32,
+    h: i32,
+) {
+    let clip_node =
+        gtk::gsk::ClipNode::new(&node, &graphene::Rect::new(0.0, 0.0, w as f32, h as f32));
+    snapshot.append_node(&clip_node);
 }
 
 glib::wrapper! {
