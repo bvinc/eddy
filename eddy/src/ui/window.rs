@@ -80,12 +80,31 @@ impl EddyApplicationWindow {
 
         header_bar.pack_start(&new_button);
         header_bar.pack_end(&menu_button);
-        // add to header_bar
 
-        let sidebar_paned = gtk::Paned::new(Orientation::Horizontal);
         let dir_bar = DirBar::new();
         dir_bar.init(app_private.sender.clone());
-        sidebar_paned.set_start_child(Some(&dir_bar));
+
+        // let sidebar_hadj = gtk::Adjustment::default();
+        // let sidebar_vadj = gtk::Adjustment::default();
+
+        // let sidebar_viewport =
+        //     gtk::Viewport::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+        // sidebar_viewport.set_child(Some(&dir_bar));
+
+        let sidebar_scrolled_window = gtk::ScrolledWindow::builder()
+            // .hadjustment(&sidebar_hadj)
+            // .hscrollbar_policy(gtk::PolicyType::Automatic)
+            // .propagate_natural_width(true)
+            // .hexpand(true)
+            // .hexpand_set(true)
+            // .min_content_width(150)
+            // .vadjustment(&sidebar_vadj)
+            // .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .child(&dir_bar)
+            .build();
+
+        let sidebar_paned = gtk::Paned::new(Orientation::Horizontal);
+        sidebar_paned.set_start_child(Some(&sidebar_scrolled_window));
         sidebar_paned.set_resize_start_child(false);
         sidebar_paned.set_shrink_start_child(true);
 
