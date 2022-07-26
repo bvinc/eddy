@@ -248,6 +248,8 @@ impl WidgetImpl for CodeViewTextPrivate {
         hadj.set_page_size(f64::from(w));
 
         self.reset_vadj_upper(obj);
+
+        obj.grab_focus();
     }
 }
 impl BoxImpl for CodeViewTextPrivate {}
