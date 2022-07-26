@@ -1,13 +1,16 @@
-* Need a view port thingy on the left bar so it can scroll
-* New files should take focus
+
 * Opening the same file twice should focus the file already open
 * page up and down don't do a full page
 * up and down don't save horizontal in a graphically correct way
   - doesn't even work with non-fixed width fonts
 * highlighting a line should include a space at the end for the newline
-* Fix performance on syntax highlighting
+* Fix performance on char_to_line, especially on files of the perfectly small size
 * double click drag doesn't drag to the next word the way I want
 
+* Crashes on extremely long lines
+  * (eddy:919015): Gsk-CRITICAL **: 19:40:34.076: GL command queue too large, truncating further batches.
+  * Figure out how textview and gedit don't crash
+  * It's not very reproducible
 
 * Find and Replace
 * Auto Indent
@@ -32,10 +35,6 @@
 
 
 * Handle save action
-
-* add a directory sidebar "component"
-* Don't use font_width anywhere, use index_to_x and x_to_index
-* Move font config to the controller
 
 
 * Should I only have a main window, and not an "application"?

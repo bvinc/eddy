@@ -119,7 +119,7 @@ impl EddyApplicationWindow {
         let file_name = path
             .and_then(|p| p.file_name())
             .map(|p| p.to_string_lossy().to_string());
-        let _page_num = self_.notebook.append_page(
+        let page_num = self_.notebook.append_page(
             &CodeView::new(
                 app_private.workspace.clone(),
                 app_private.sender.clone(),
@@ -127,6 +127,7 @@ impl EddyApplicationWindow {
             ),
             Some(&gtk::Label::new(file_name.as_deref())),
         );
+        self_.notebook.set_page(page_num as i32);
         self_.pages.borrow_mut().push(Page {
             view_id,
             pristine: true,
