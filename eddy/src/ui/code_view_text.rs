@@ -544,6 +544,15 @@ impl CodeViewTextPrivate {
         buffer.borrow_mut().drag_end(self.view_id.get());
     }
 
+    /// Determines how many lines page up or down should use
+    fn page_lines(&self, cvt: &CodeViewText) -> usize {
+        let font_height = self.font_metrics.borrow().font_height;
+        std::cmp::max(
+            2,
+            ((cvt.allocated_height() as f64 / font_height) - 2.0) as usize,
+        )
+    }
+
     fn handle_draw(&self, cvt: &CodeViewText, snapshot: &gtk::Snapshot) {
         let draw_start = Instant::now();
 
@@ -994,16 +1003,22 @@ impl CodeViewText {
                     .move_to_end_of_document_and_modify_selection(view_id);
             }
             Key::Page_Up if norm && !shift => {
-                buffer.borrow_mut().page_up(view_id);
+                buffer.borrow_mut().page_up(view_id, self_.page_lines(self));
             }
             Key::Page_Down if norm && !shift => {
-                buffer.borrow_mut().page_down(view_id);
+                buffer
+                    .borrow_mut()
+                    .page_down(view_id, self_.page_lines(self));
             }
             Key::Page_Up if norm && shift => {
-                buffer.borrow_mut().page_up_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .page_up_and_modify_selection(view_id, self_.page_lines(self));
             }
             Key::Page_Down if norm && shift => {
-                buffer.borrow_mut().page_down_and_modify_selection(view_id);
+                buffer
+                    .borrow_mut()
+                    .page_down_and_modify_selection(view_id, self_.page_lines(self));
             }
             _ => {
                 if let Some(ch) = ch {

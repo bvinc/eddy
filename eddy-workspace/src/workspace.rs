@@ -271,21 +271,25 @@ impl Workspace {
             .borrow_mut()
             .move_to_end_of_document_and_modify_selection(view_id);
     }
-    pub fn page_down(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().page_down(view_id);
-    }
-    pub fn page_up(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().page_up(view_id);
-    }
-    pub fn page_up_and_modify_selection(&mut self, view_id: ViewId) {
+    pub fn page_down(&mut self, view_id: ViewId, lines_visible: usize) {
         self.buffer(view_id)
             .borrow_mut()
-            .page_up_and_modify_selection(view_id);
+            .page_down(view_id, lines_visible);
     }
-    pub fn page_down_and_modify_selection(&mut self, view_id: ViewId) {
+    pub fn page_up(&mut self, view_id: ViewId, lines_visible: usize) {
         self.buffer(view_id)
             .borrow_mut()
-            .page_down_and_modify_selection(view_id);
+            .page_up(view_id, lines_visible);
+    }
+    pub fn page_up_and_modify_selection(&mut self, view_id: ViewId, lines_visible: usize) {
+        self.buffer(view_id)
+            .borrow_mut()
+            .page_up_and_modify_selection(view_id, lines_visible);
+    }
+    pub fn page_down_and_modify_selection(&mut self, view_id: ViewId, lines_visible: usize) {
+        self.buffer(view_id)
+            .borrow_mut()
+            .page_down_and_modify_selection(view_id, lines_visible);
     }
     pub fn select_all(&mut self, view_id: ViewId) {
         self.buffer(view_id).borrow_mut().select_all(view_id);

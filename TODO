@@ -1,6 +1,5 @@
 
 * Opening the same file twice should focus the file already open
-* page up and down don't do a full page
 * up and down don't save horizontal in a graphically correct way
   - doesn't even work with non-fixed width fonts
 * highlighting a line should include a space at the end for the newline

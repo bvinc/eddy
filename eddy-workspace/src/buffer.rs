@@ -900,40 +900,58 @@ impl Buffer {
         self.scroll_to_selections(view_id);
     }
 
-    pub fn page_down(&mut self, view_id: ViewId) {
-        // TODO base on visible lines
-        for _ in 0..10 {
-            self.move_down(view_id);
+    pub fn page_up(&mut self, view_id: ViewId, lines: usize) {
+        for _ in 0..lines {
+            let rope = &self.rope;
+            for sel in &mut self.selections.entry(view_id).or_default().sels {
+                let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
+                sel.horiz = horiz;
+                sel.start = final_char;
+                sel.end = final_char;
+            }
         }
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
 
-    pub fn page_up(&mut self, view_id: ViewId) {
-        // TODO base on visible lines
-        for _ in 0..10 {
-            self.move_up(view_id);
+    pub fn page_up_and_modify_selection(&mut self, view_id: ViewId, lines: usize) {
+        for _ in 0..lines {
+            let rope = &self.rope;
+            for sel in &mut self.selections.entry(view_id).or_default().sels {
+                let (final_char, horiz) = Self::up(rope, sel.cursor(), sel.horiz, self.tab_size);
+                sel.horiz = horiz;
+                sel.end = final_char;
+            }
         }
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
 
-    pub fn page_up_and_modify_selection(&mut self, view_id: ViewId) {
-        // TODO base on visible lines
-        for _ in 0..10 {
-            self.move_up_and_modify_selection(view_id);
+    pub fn page_down(&mut self, view_id: ViewId, lines: usize) {
+        for _ in 0..lines {
+            let rope = &self.rope;
+            for sel in &mut self.selections.entry(view_id).or_default().sels {
+                let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
+                sel.horiz = horiz;
+                sel.start = final_char;
+                sel.end = final_char;
+            }
         }
 
         self.on_selection_change();
         self.scroll_to_selections(view_id);
     }
 
-    pub fn page_down_and_modify_selection(&mut self, view_id: ViewId) {
-        // TODO base on visible lines
-        for _ in 0..10 {
-            self.move_down_and_modify_selection(view_id);
+    pub fn page_down_and_modify_selection(&mut self, view_id: ViewId, lines: usize) {
+        for _ in 0..lines {
+            let rope = &self.rope;
+            for sel in &mut self.selections.entry(view_id).or_default().sels {
+                let (final_char, horiz) = Self::down(rope, sel.cursor(), sel.horiz, self.tab_size);
+                sel.horiz = horiz;
+                sel.end = final_char;
+            }
         }
 
         self.on_selection_change();
