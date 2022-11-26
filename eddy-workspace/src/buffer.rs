@@ -6,7 +6,7 @@ use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
-use crate::{BufferId, Msg, MsgSender, Point, Range, Selection, ViewId};
+use crate::{BufferId, BufferUpdate, BufferUpdateSender, Point, Range, Selection, ViewId};
 use anyhow::bail;
 use log::*;
 use ropey::{Rope, RopeSlice};
@@ -25,6 +25,7 @@ use std::time::Instant;
 pub struct Buffer {
     id: BufferId,
     path: Option<PathBuf>,
+    pristine: bool,
     // history_ix: usize,
     // history: Vec<Rope>,
     rope: Rope,
@@ -36,7 +37,7 @@ pub struct Buffer {
     tab_size: usize,
     text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
     scroll_to_selections_cbs: HashMap<ViewId, Vec<Box<dyn Fn() + 'static>>>,
-    msg_sender: Arc<Mutex<MsgSender>>,
+    bu_sender: Arc<Mutex<BufferUpdateSender>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -78,11 +79,12 @@ impl Selections {
 }
 
 impl Buffer {
-    pub fn new(id: BufferId, msg_sender: Arc<Mutex<MsgSender>>) -> Self {
+    pub fn new(id: BufferId, bu_sender: Arc<Mutex<BufferUpdateSender>>) -> Self {
         let rope = Rope::new();
         Self {
             id,
             path: None,
+            pristine: false,
             history: History::new(&rope),
             rope,
             selections: HashMap::new(),
@@ -92,19 +94,20 @@ impl Buffer {
             tab_size: 8,
             text_change_cbs: Vec::new(),
             scroll_to_selections_cbs: HashMap::new(),
-            msg_sender,
+            bu_sender,
         }
     }
     pub fn from_file(
         id: BufferId,
         path: &Path,
-        msg_sender: Arc<Mutex<MsgSender>>,
+        bu_sender: Arc<Mutex<BufferUpdateSender>>,
     ) -> Result<Self, io::Error> {
         let rope = Rope::from_reader(BufReader::new(File::open(path)?))?;
 
         let mut buffer = Buffer {
             id,
             path: Some(path.to_owned()),
+            pristine: true,
             history: History::new(&rope),
             rope,
             selections: HashMap::new(),
@@ -114,7 +117,7 @@ impl Buffer {
             tab_size: 8,
             text_change_cbs: Vec::new(),
             scroll_to_selections_cbs: HashMap::new(),
-            msg_sender,
+            bu_sender,
         };
         buffer.on_text_change();
         Ok(buffer)
@@ -181,6 +184,16 @@ impl Buffer {
         // Call the change callbacks
         for cb in &self.text_change_cbs {
             cb()
+        }
+    }
+
+    fn set_pristine(&mut self, pristine: bool) {
+        if self.pristine != pristine {
+            self.bu_sender
+                .lock()
+                .unwrap()
+                .send(BufferUpdate::PristineChanged(self.id));
+            self.pristine = pristine
         }
     }
 
@@ -1542,10 +1555,10 @@ impl Buffer {
         rope.write_to(&mut file)?;
 
         self.path = Some(path.into());
-        self.msg_sender
+        self.bu_sender
             .lock()
             .unwrap()
-            .send(Msg::PathChanged(self.id));
+            .send(BufferUpdate::PathChanged(self.id));
         Ok(())
     }
 }
@@ -1591,7 +1604,7 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "a");
@@ -1599,7 +1612,7 @@ mod tests {
     }
     #[test]
     fn test_insert2() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "a");
@@ -1610,7 +1623,7 @@ mod tests {
 
     #[test]
     fn test_move_left() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "a");
@@ -1621,7 +1634,7 @@ mod tests {
     }
     #[test]
     fn test_move_left_right() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "a");
@@ -1634,7 +1647,7 @@ mod tests {
 
     #[test]
     fn test_move_left_too_far() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.move_left(0);
@@ -1645,7 +1658,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_too_far() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.move_right(0);
@@ -1657,7 +1670,7 @@ mod tests {
 
     #[test]
     fn test_move_left_and_modify_selection() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc");
@@ -1671,7 +1684,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_and_modify_selection() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc");
@@ -1684,7 +1697,7 @@ mod tests {
     }
     #[test]
     fn test_move_up() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
@@ -1695,7 +1708,7 @@ mod tests {
     }
     #[test]
     fn test_move_up2() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "a\nbcd");
@@ -1705,7 +1718,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_0() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "\tabc");
@@ -1716,7 +1729,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_4() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "\tabc");
@@ -1728,7 +1741,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_8() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "\tabc");
@@ -1740,7 +1753,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_9() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "\tabc");
@@ -1752,7 +1765,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_from_tab() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abcdefghi");
@@ -1764,7 +1777,7 @@ mod tests {
     }
     #[test]
     fn test_move_down() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
@@ -1782,7 +1795,7 @@ mod tests {
     }
     #[test]
     fn test_move_down2() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc\nd");
@@ -1800,7 +1813,7 @@ mod tests {
     }
     #[test]
     fn test_move_down3() {
-        let msg_sender = Arc::new(Mutex::new(MsgSender::new()));
+        let msg_sender = Arc::new(Mutex::new(BufferUpdateSender::new()));
         let mut buf = Buffer::new(0, msg_sender);
         buf.init_view(0);
         buf.insert(0, "abc");

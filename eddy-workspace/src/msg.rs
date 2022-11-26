@@ -1,22 +1,23 @@
 use crate::BufferId;
 
 #[derive(Copy, Clone, Debug)]
-pub enum Msg {
+pub enum BufferUpdate {
     LsInitialized,
     PathChanged(BufferId),
+    PristineChanged(BufferId),
 }
 
-pub struct MsgSender {
-    pub callback: Option<Box<dyn 'static + Sync + Send + FnMut(Msg)>>,
+pub struct BufferUpdateSender {
+    pub callback: Option<Box<dyn 'static + Send + FnMut(BufferUpdate)>>,
 }
 
-impl MsgSender {
-    pub fn new() -> MsgSender {
-        MsgSender { callback: None }
+impl BufferUpdateSender {
+    pub fn new() -> BufferUpdateSender {
+        BufferUpdateSender { callback: None }
     }
-    pub fn send(&mut self, msg: Msg) {
+    pub fn send(&mut self, msg: BufferUpdate) {
         if let Some(ref mut cb) = self.callback {
-            cb(Msg::LsInitialized);
+            cb(msg);
         }
     }
 }

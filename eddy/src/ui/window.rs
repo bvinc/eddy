@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::app::{Action, EddyApplication, EddyApplicationPrivate};
+use crate::app::{EddyApplication, EddyApplicationPrivate, Event};
 use crate::ui::{CodeView, DirBar};
 use eddy_workspace::{ViewId, Workspace};
 
@@ -20,7 +20,7 @@ struct Page {
 
 pub struct EddyApplicationWindowPrivate {
     app: OnceCell<EddyApplication>,
-    sender: OnceCell<Sender<Action>>,
+    sender: OnceCell<Sender<Event>>,
     notebook: gtk::Notebook,
     pages: RefCell<Vec<Page>>,
 }
@@ -55,7 +55,7 @@ glib::wrapper! {
 
 impl EddyApplicationWindow {
     pub fn new(app: EddyApplication) -> Self {
-        let window = glib::Object::new::<Self>(&[("application", &app)]).unwrap();
+        let window = glib::Object::new::<Self>(&[("application", &app)]);
 
         app.add_window(&window);
         window.setup_widgets();

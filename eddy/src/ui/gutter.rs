@@ -6,6 +6,7 @@ use glib::clone;
 use glib::Sender;
 use gtk::gdk;
 use gtk::glib;
+use gtk::graphene;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{glib::subclass, Adjustment};
@@ -21,12 +22,12 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
 
-use crate::app::Action;
+use crate::app::Event;
 use crate::theme::Theme;
 
 pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
-    sender: OnceCell<Sender<Action>>,
+    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     theme: Theme,
@@ -63,34 +64,29 @@ impl ObjectSubclass for GutterPrivate {
 }
 
 impl ObjectImpl for GutterPrivate {
-    fn constructed(&self, obj: &Self::Type) {
-        self.parent_constructed(obj);
+    fn constructed(&self) {
+        self.parent_constructed();
 
-        let pango_ctx = obj.pango_context();
+        let pango_ctx = self.obj().pango_context();
         let mut font_desc = pango::FontDescription::new();
         font_desc.set_family("Hack, Mono");
         font_desc.set_size(16384);
-        pango_ctx.set_font_description(&font_desc);
+        pango_ctx.set_font_description(Some(&font_desc));
     }
 }
 impl WidgetImpl for GutterPrivate {
-    fn snapshot(&self, gutter: &Gutter, snapshot: &gtk::Snapshot) {
+    fn snapshot(&self, snapshot: &gtk::Snapshot) {
         // snapshot.render_layout(&ctx, 10.0, 10.0, &layout);
         // snapshot.render_background(&ctx, 10.0, 10.0, 30.0, 20.0);
-        self.handle_draw(gutter, snapshot);
+        self.handle_draw(&self.obj(), snapshot);
     }
-    fn measure(
-        &self,
-        obj: &Self::Type,
-        orientation: gtk::Orientation,
-        for_size: i32,
-    ) -> (i32, i32, i32, i32) {
-        self.parent_measure(obj, orientation, for_size);
+    fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+        self.parent_measure(orientation, for_size);
 
         let nchars = std::cmp::max(self.gutter_nchars.get(), 2) + 2;
 
-        let pango_ctx = obj.pango_context();
-        if let Some(metrics) = pango_ctx.metrics(None, None) {
+        let pango_ctx = self.obj().pango_context();
+        if let metrics = pango_ctx.metrics(None, None) {
             let font_width = metrics.approximate_digit_width() as f64 / pango::SCALE as f64;
             let minimum_size = nchars as i32 * font_width as i32;
             let natural_size = nchars as i32 * font_width as i32;
@@ -106,8 +102,8 @@ impl WidgetImpl for GutterPrivate {
             (0, 0, -1, -1)
         }
     }
-    fn size_allocate(&self, obj: &Self::Type, w: i32, h: i32, bl: i32) {
-        self.parent_size_allocate(obj, w, h, bl);
+    fn size_allocate(&self, w: i32, h: i32, bl: i32) {
+        self.parent_size_allocate(w, h, bl);
         // dbg!(w, h, bl);
         debug!("gutter cvt size allocate");
     }
@@ -159,7 +155,7 @@ impl GutterPrivate {
         let pango_ctx = cv.pango_context();
         let mut font_height = 15.0;
         let mut font_ascent = 15.0;
-        if let Some(metrics) = pango_ctx.metrics(None, None) {
+        if let metrics = pango_ctx.metrics(None, None) {
             font_height = metrics.height() as f64 / pango::SCALE as f64;
             font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
         }
@@ -314,8 +310,8 @@ glib::wrapper! {
 }
 
 impl Gutter {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: usize) -> Self {
-        let gutter = glib::Object::new::<Self>(&[]).unwrap();
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: usize) -> Self {
+        let gutter = glib::Object::new::<Self>(&[]);
         let gutter_priv = GutterPrivate::from_instance(&gutter);
 
         let _ = gutter_priv.workspace.set(workspace);

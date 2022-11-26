@@ -20,7 +20,7 @@ mod ui;
 // use crate::widget::editview::{self, EditView};
 // use crate::widget::tab::{self, Tab};
 use crate::app::EddyApplication;
-use eddy_workspace::{Callbacks, Workspace};
+use eddy_workspace::Workspace;
 use gio::{ApplicationFlags, SimpleAction};
 use glib::variant::Variant;
 use gtk::glib;

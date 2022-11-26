@@ -1,5 +1,5 @@
 use super::{CodeViewText, Gutter};
-use crate::app::Action;
+use crate::app::Event;
 use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan};
 use eddy_workspace::{ViewId, Workspace};
@@ -29,7 +29,7 @@ pub struct CodeViewPrivate {
     gutter: OnceCell<Gutter>,
     hadj: Adjustment,
     vadj: Adjustment,
-    sender: OnceCell<Sender<Action>>,
+    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     theme: Theme,
@@ -70,9 +70,9 @@ impl ObjectSubclass for CodeViewPrivate {
 }
 
 impl ObjectImpl for CodeViewPrivate {
-    fn constructed(&self, obj: &Self::Type) {
+    fn constructed(&self) {
         dbg!("cv constructed");
-        self.parent_constructed(obj);
+        self.parent_constructed();
 
         // obj.set_focusable(true);
         // obj.set_can_focus(true);
@@ -111,8 +111,8 @@ glib::wrapper! {
 }
 
 impl CodeView {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: ViewId) -> Self {
-        let obj = glib::Object::new::<Self>(&[]).unwrap();
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: ViewId) -> Self {
+        let obj = glib::Object::new::<Self>(&[]);
         let imp = CodeViewPrivate::from_instance(&obj);
         imp.view_id.set(view_id);
 
@@ -153,7 +153,7 @@ impl CodeView {
             let buffer = workspace.buffer(imp.view_id.get());
             let view_id = imp.view_id.get();
             buffer.borrow_mut().connect_update(move || {
-                if let Err(err) = sender2.send(Action::BufferChange { view_id }) {
+                if let Err(err) = sender2.send(Event::BufferChange { view_id }) {
                     error!("buffer changed: {}", err);
                 };
             });
@@ -162,7 +162,7 @@ impl CodeView {
             buffer
                 .borrow_mut()
                 .connect_scroll_to_selections(view_id, move || {
-                    if let Err(err) = sender3.send(Action::ScrollToCarets { view_id }) {
+                    if let Err(err) = sender3.send(Event::ScrollToCarets { view_id }) {
                         error!("scroll to selections: {}", err);
                     };
                 });

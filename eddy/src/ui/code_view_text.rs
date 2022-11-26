@@ -1,4 +1,4 @@
-use crate::app::Action;
+use crate::app::Event;
 use crate::color::{pango_to_gdk, text_theme_to_gdk};
 use crate::theme::Theme;
 use crate::ui::{Layout, LayoutItem, LayoutLine};
@@ -11,6 +11,7 @@ use glib::clone;
 use glib::ParamSpec;
 use glib::Sender;
 use gtk::glib::subclass;
+use gtk::graphene;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, Adjustment};
@@ -37,7 +38,7 @@ pub struct CodeViewTextPrivate {
     hscroll_policy: gtk::ScrollablePolicy,
     vadj: RefCell<Adjustment>,
     vscroll_policy: gtk::ScrollablePolicy,
-    sender: OnceCell<Sender<Action>>,
+    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     font_metrics: RefCell<FontMetrics>,
@@ -132,16 +133,9 @@ impl ObjectImpl for CodeViewTextPrivate {
         PROPERTIES.as_ref()
     }
 
-    fn set_property(
-        &self,
-        editable: &Self::Type,
-        id: usize,
-        value: &glib::Value,
-        pspec: &glib::ParamSpec,
-    ) {
-    }
+    fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {}
 
-    fn property(&self, editable: &Self::Type, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+    fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
         // debug!("get property {}", pspec.name());
         match pspec.name() {
             "hadjustment" => self.hadj.borrow().to_value(),
@@ -152,15 +146,15 @@ impl ObjectImpl for CodeViewTextPrivate {
         }
     }
 
-    fn constructed(&self, obj: &Self::Type) {
-        self.parent_constructed(obj);
-
+    fn constructed(&self) {
+        self.parent_constructed();
+        let obj = self.obj();
         let pango_ctx = obj.pango_context();
         let mut font_desc = pango::FontDescription::new();
         font_desc.set_family("Hack, Mono");
         font_desc.set_size(16384);
-        pango_ctx.set_font_description(&font_desc);
-        CodeViewTextPrivate::from_instance(obj).on_font_change(obj);
+        pango_ctx.set_font_description(Some(&font_desc));
+        CodeViewTextPrivate::from_instance(&obj).on_font_change(&obj);
 
         obj.set_focusable(true);
         obj.set_can_focus(true);
@@ -233,13 +227,13 @@ impl ObjectImpl for CodeViewTextPrivate {
     }
 }
 impl WidgetImpl for CodeViewTextPrivate {
-    fn snapshot(&self, code_view: &CodeViewText, snapshot: &gtk::Snapshot) {
+    fn snapshot(&self, snapshot: &gtk::Snapshot) {
         // snapshot.render_layout(&ctx, 10.0, 10.0, &layout);
         // snapshot.render_background(&ctx, 10.0, 10.0, 30.0, 20.0);
-        self.handle_draw(code_view, snapshot);
+        self.handle_draw(&self.obj(), snapshot);
     }
-    fn size_allocate(&self, obj: &Self::Type, w: i32, h: i32, bl: i32) {
-        self.parent_size_allocate(obj, w, h, bl);
+    fn size_allocate(&self, w: i32, h: i32, bl: i32) {
+        self.parent_size_allocate(w, h, bl);
         debug!("cvt size allocate {} {} {}", w, h, bl);
 
         let vadj = self.vadj.borrow().clone();
@@ -247,9 +241,9 @@ impl WidgetImpl for CodeViewTextPrivate {
         let hadj = self.hadj.borrow().clone();
         hadj.set_page_size(f64::from(w));
 
-        self.reset_vadj_upper(obj);
+        self.reset_vadj_upper(&self.obj());
 
-        obj.grab_focus();
+        self.obj().grab_focus();
     }
 }
 impl BoxImpl for CodeViewTextPrivate {}
@@ -262,7 +256,7 @@ impl CodeViewTextPrivate {
 
         self.font_metrics.borrow_mut().font_height = 15.0;
         self.font_metrics.borrow_mut().font_ascent = 15.0;
-        if let Some(metrics) = pango_ctx.metrics(None, None) {
+        if let metrics = pango_ctx.metrics(None, None) {
             self.font_metrics.borrow_mut().font_height =
                 metrics.height() as f64 / pango::SCALE as f64;
             self.font_metrics.borrow_mut().font_ascent =
@@ -833,8 +827,8 @@ glib::wrapper! {
 }
 
 impl CodeViewText {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Action>, view_id: usize) -> Self {
-        let obj = glib::Object::new::<Self>(&[]).unwrap();
+    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: usize) -> Self {
+        let obj = glib::Object::new::<Self>(&[]);
         let imp = CodeViewTextPrivate::from_instance(&obj);
 
         imp.view_id.set(view_id);

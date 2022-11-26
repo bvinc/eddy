@@ -1,6 +1,6 @@
 use anyhow::*;
 use cairo::glib::translate::FromGlib;
-use eddy_workspace::Workspace;
+use eddy_workspace::{BufferId, BufferUpdate, Workspace};
 use gio::ApplicationFlags;
 use glib::{subclass, WeakRef};
 use glib::{Receiver, Sender};
@@ -21,15 +21,16 @@ use std::rc::Rc;
 use crate::ui::EddyApplicationWindow;
 
 #[derive(Clone, Debug)]
-pub enum Action {
+pub enum Event {
     Open(PathBuf),
     BufferChange { view_id: usize },
     ScrollToCarets { view_id: usize },
+    BufferUpdate(BufferUpdate),
 }
 
 pub struct EddyApplicationPrivate {
-    pub sender: Sender<Action>,
-    receiver: RefCell<Option<Receiver<Action>>>,
+    pub sender: Sender<Event>,
+    receiver: RefCell<Option<Receiver<Event>>>,
     pub workspace: Rc<RefCell<Workspace>>,
     window: OnceCell<WeakRef<EddyApplicationWindow>>,
 }
@@ -59,10 +60,10 @@ impl ObjectSubclass for EddyApplicationPrivate {
 impl ObjectImpl for EddyApplicationPrivate {}
 impl GtkApplicationImpl for EddyApplicationPrivate {}
 impl ApplicationImpl for EddyApplicationPrivate {
-    fn activate(&self, _: &Self::Type) {
+    fn activate(&self) {
         debug!("activate");
 
-        let app = self.instance().downcast::<EddyApplication>().unwrap();
+        let app = self.obj().clone();
 
         debug!("setup");
         app.setup();
@@ -74,6 +75,11 @@ impl ApplicationImpl for EddyApplicationPrivate {
 
         let receiver = self.receiver.borrow_mut().take().unwrap();
         receiver.attach(None, move |action| app.process_action(action));
+
+        let sender = self.sender.clone();
+        self.workspace.borrow_mut().set_callback(move |bu_msg| {
+            sender.send(Event::BufferUpdate(bu_msg));
+        });
     }
 }
 
@@ -90,8 +96,7 @@ impl EddyApplication {
         let app = glib::Object::new::<Self>(&[
             ("application-id", &Some("com.github.bvinc.eddy")),
             ("flags", &ApplicationFlags::empty()),
-        ])
-        .unwrap();
+        ]);
 
         let args: Vec<String> = env::args().collect();
         app.run_with_args(&args);
@@ -109,18 +114,20 @@ impl EddyApplication {
         let self_ = EddyApplicationPrivate::from_instance(self);
         self_.window.get().unwrap().clone().upgrade().unwrap()
     }
+
     /*
         pub fn workspace(&self) -> &mut Workspace {
             let self_ = EddyApplicationPrivate::from_instance(self);
             self_.workspace.get().unwrap().borrow_mut().deref_mut()
         }
     */
-    fn process_action(&self, action: Action) -> glib::Continue {
+    fn process_action(&self, action: Event) -> glib::Continue {
         debug!("{:?}", &action);
         match action {
-            Action::Open(pb) => self.show_err(self.action_open(&pb)),
-            Action::BufferChange { view_id } => self.action_buffer_change(view_id),
-            Action::ScrollToCarets { view_id } => self.action_scroll_to_carets(view_id),
+            Event::Open(pb) => self.show_err(self.action_open(&pb)),
+            Event::BufferChange { view_id } => self.action_buffer_change(view_id),
+            Event::ScrollToCarets { view_id } => self.action_scroll_to_carets(view_id),
+            Event::BufferUpdate(bu) => self.handle_buffer_update(bu),
         }
         glib::Continue(true)
     }
@@ -146,6 +153,8 @@ impl EddyApplication {
         window.scroll_to_carets(view_id);
     }
 
+    fn handle_buffer_update(&self, bu: BufferUpdate) {}
+
     fn show_err(&self, res: Result<(), anyhow::Error>) {
         if let Err(e) = res {
             dbg!(&e);
@@ -159,5 +168,27 @@ impl EddyApplication {
             dialog.connect_response(|w, _| w.hide());
             dialog.show();
         }
+    }
+}
+
+impl EddyApplicationPrivate {
+    fn process_buffer_update(&self, bu: BufferUpdate) {
+        debug!("buffer update {:?}", &bu);
+        match bu {
+            BufferUpdate::LsInitialized => self.bu_ls_initialized(),
+            BufferUpdate::PathChanged(buf_id) => self.bu_path_changed(buf_id),
+            BufferUpdate::PristineChanged(buf_id) => self.bu_pristine_changed(buf_id),
+        }
+    }
+
+    fn bu_ls_initialized(&self) {
+        debug!("ls initialized");
+    }
+
+    fn bu_path_changed(&self, buf_id: BufferId) {
+        debug!("path changed");
+    }
+    fn bu_pristine_changed(&self, buf_id: BufferId) {
+        debug!("pristine changed");
     }
 }

@@ -13,11 +13,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use crate::app::Action;
-use crate::app::EddyApplication;
+use crate::app::{EddyApplication, Event};
 
 pub struct DirBarPrivate {
-    sender: OnceCell<Sender<Action>>,
+    sender: OnceCell<Sender<Event>>,
     dir: Rc<RefCell<Option<PathBuf>>>,
     tree_store: TreeStore,
 }
@@ -47,7 +46,7 @@ impl ObjectImpl for DirBarPrivate {}
 impl WidgetImpl for DirBarPrivate {}
 impl WindowImpl for DirBarPrivate {}
 impl gtk::subclass::prelude::TreeViewImpl for DirBarPrivate {
-    fn test_expand_row(&self, _tv: &Self::Type, ti: &TreeIter, tp: &TreePath) -> bool {
+    fn test_expand_row(&self, ti: &TreeIter, tp: &TreePath) -> bool {
         dbg!("handle_test_expand_row");
         if let Ok(path) = tree_path_to_path(self.dir.borrow().clone(), &self.tree_store, &tp) {
             if let Err(e) = refresh_dir(&self.tree_store, Some(ti), &path) {
@@ -57,18 +56,18 @@ impl gtk::subclass::prelude::TreeViewImpl for DirBarPrivate {
         false
     }
 
-    fn test_collapse_row(&self, _tv: &Self::Type, _ti: &TreeIter, _tp: &TreePath) -> bool {
+    fn test_collapse_row(&self, _ti: &TreeIter, _tp: &TreePath) -> bool {
         false
     }
 
-    fn row_activated(&self, tv: &Self::Type, tp: &TreePath, _: &TreeViewColumn) {
+    fn row_activated(&self, tp: &TreePath, _: &TreeViewColumn) {
         let dir = self.dir.borrow().clone();
         if let Some(ref ti) = self.tree_store.iter(&tp) {
             if self.tree_store.iter_has_child(&ti) {
-                if !tv.row_expanded(&tp) {
-                    tv.expand_row(&tp, false);
+                if !self.obj().row_expanded(&tp) {
+                    self.obj().expand_row(&tp, false);
                 } else {
-                    tv.collapse_row(&tp);
+                    self.obj().collapse_row(&tp);
                 }
                 return;
             }
@@ -81,7 +80,7 @@ impl gtk::subclass::prelude::TreeViewImpl for DirBarPrivate {
                 // send parent an OpenPath signal
                 if let Ok(path) = path.canonicalize() {
                     dbg!(&path);
-                    send!(self.sender.get().unwrap(), Action::Open(path));
+                    send!(self.sender.get().unwrap(), Event::Open(path));
                 }
             }
             Err(e) => {
@@ -98,14 +97,14 @@ glib::wrapper! {
 
 impl DirBar {
     pub fn new() -> Self {
-        let dir_bar = glib::Object::new::<Self>(&[]).unwrap();
+        let dir_bar = glib::Object::new::<Self>(&[]);
 
         dir_bar.setup_widgets();
         dir_bar.setup_signals();
         dir_bar
     }
 
-    pub fn init(&self, sender: Sender<Action>) {
+    pub fn init(&self, sender: Sender<Event>) {
         let self_ = DirBarPrivate::from_instance(self);
 
         let _ = self_.sender.set(sender);
