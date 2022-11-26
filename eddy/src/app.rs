@@ -1,24 +1,19 @@
+use crate::ui::EddyApplicationWindow;
 use anyhow::*;
 use cairo::glib::translate::FromGlib;
 use eddy_workspace::{BufferId, BufferUpdate, Workspace};
 use gio::ApplicationFlags;
-use glib::{subclass, WeakRef};
-use glib::{Receiver, Sender};
-use gtk::glib;
+use glib::{subclass, Receiver, Sender, WeakRef};
 use gtk::prelude::*;
 use gtk::subclass::application::GtkApplicationImpl;
-use gtk::subclass::prelude::ApplicationImpl;
-use gtk::subclass::prelude::*;
-use gtk::{ButtonsType, DialogFlags, MessageDialog, MessageType};
+use gtk::subclass::prelude::{ApplicationImpl, *};
+use gtk::{glib, ButtonsType, DialogFlags, MessageDialog, MessageType};
 use log::*;
 use once_cell::unsync::OnceCell;
 use std::cell::RefCell;
 use std::env;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
-use crate::ui::EddyApplicationWindow;
 
 #[derive(Clone, Debug)]
 pub enum Event {

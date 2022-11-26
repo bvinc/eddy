@@ -1,8 +1,6 @@
 use crate::lsp::{self, LanguageServerClient, ResultQueue};
-use crate::style::AttrSpan;
-use crate::style::Theme;
-use crate::Buffer;
-use crate::{BufferUpdate, BufferUpdateSender};
+use crate::style::{AttrSpan, Theme};
+use crate::{Buffer, BufferUpdate, BufferUpdateSender};
 use anyhow::Context;
 use ropey::RopeSlice;
 use serde_json::Value;

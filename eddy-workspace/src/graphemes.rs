@@ -1,4 +1,5 @@
-use ropey::{str_utils::byte_to_char_idx, Rope, RopeSlice};
+use ropey::str_utils::byte_to_char_idx;
+use ropey::{Rope, RopeSlice};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 
 /// Finds the previous grapheme boundary before the given char position.

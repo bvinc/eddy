@@ -12,13 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::ffi::OsStr;
-use std::io::{BufReader, BufWriter};
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
-
-use url::Url;
 // use xi_plugin_lib::{Cache, ChunkCache, CoreProxy, Error as PluginLibError, View};
 // use xi_rope::rope::RopeDelta;
 
@@ -31,6 +24,12 @@ use super::result_queue::ResultQueue;
 use super::types::Error;
 use super::LanguageServerClient;
 use log::*;
+use std::ffi::OsStr;
+use std::io::{BufReader, BufWriter};
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use url::Url;
 
 /// Start a new Language Server Process by spawning a process given the parameters
 /// Returns a Arc to the Language Server Client which abstracts connection to the

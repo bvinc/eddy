@@ -1,17 +1,15 @@
+use crate::app::{EddyApplication, EddyApplicationPrivate, Event};
+use crate::ui::{CodeView, DirBar};
+use eddy_workspace::{ViewId, Workspace};
 use glib::Sender;
-use gtk::glib;
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::Orientation;
+use gtk::{glib, Orientation};
 use once_cell::unsync::OnceCell;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-
-use crate::app::{EddyApplication, EddyApplicationPrivate, Event};
-use crate::ui::{CodeView, DirBar};
-use eddy_workspace::{ViewId, Workspace};
 
 struct Page {
     view_id: usize,

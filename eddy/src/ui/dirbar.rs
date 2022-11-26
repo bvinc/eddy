@@ -1,10 +1,10 @@
+use crate::app::{EddyApplication, Event};
 use anyhow::bail;
 use glib::Sender;
-use gtk::glib;
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{CellRendererText, TreeIter, TreePath, TreeStore, TreeViewColumn};
+use gtk::{glib, CellRendererText, TreeIter, TreePath, TreeStore, TreeViewColumn};
 use gtk_macros::send;
 use log::*;
 use once_cell::unsync::OnceCell;
@@ -12,8 +12,6 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
-use crate::app::{EddyApplication, Event};
 
 pub struct DirBarPrivate {
     sender: OnceCell<Sender<Event>>,

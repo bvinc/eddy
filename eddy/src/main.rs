@@ -19,22 +19,22 @@ mod ui;
 // use crate::widget::dir_bar::DirBar;
 // use crate::widget::editview::{self, EditView};
 // use crate::widget::tab::{self, Tab};
-use crate::app::EddyApplication;
-use eddy_workspace::Workspace;
-use gio::{ApplicationFlags, SimpleAction};
-use glib::variant::Variant;
-use gtk::glib;
-use gtk::prelude::*;
-use gtk::{
-    self, Application, ApplicationWindow, ButtonsType, Dialog, DialogFlags, FileChooserAction,
-    FileChooserDialog, MessageDialog, MessageType, Notebook, Paned, ResponseType,
-};
 // use log::*;
 // use relm::{connect, Channel, Relm, Update, Widget};
 // use relm_derive::Msg;
 // use std::any::Any;
 // use std::cell::RefCell;
 // use std::collections::HashMap;
+use crate::app::EddyApplication;
+use eddy_workspace::Workspace;
+use gio::{ApplicationFlags, SimpleAction};
+use glib::variant::Variant;
+use gtk::prelude::*;
+use gtk::{
+    self, glib, Application, ApplicationWindow, ButtonsType, Dialog, DialogFlags,
+    FileChooserAction, FileChooserDialog, MessageDialog, MessageType, Notebook, Paned,
+    ResponseType,
+};
 use std::env::args;
 // use std::include_str;
 // use std::io;

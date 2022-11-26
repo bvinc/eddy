@@ -1,15 +1,13 @@
+use crate::app::Event;
+use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
-use gdk::Key;
-use gdk::ModifierType;
-use glib::clone;
-use glib::Sender;
-use gtk::gdk;
-use gtk::glib;
-use gtk::graphene;
+use gdk::{Key, ModifierType};
+use glib::{clone, Sender};
+use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{glib::subclass, Adjustment};
+use gtk::{gdk, glib, graphene, Adjustment};
 use log::*;
 use lru_cache::LruCache;
 use once_cell::unsync::OnceCell;
@@ -21,9 +19,6 @@ use std::cmp::{max, min};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
-
-use crate::app::Event;
-use crate::theme::Theme;
 
 pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
