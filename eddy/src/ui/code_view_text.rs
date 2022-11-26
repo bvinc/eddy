@@ -678,7 +678,7 @@ impl CodeViewTextPrivate {
                 // Append text node to snapshot
                 if let Some(text_node) = gtk::gsk::TextNode::new(
                     &item.analysis().font(),
-                    &mut item.glyphs,
+                    &item.glyphs,
                     &fg_color,
                     &graphene::Point::new(
                         line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
@@ -807,12 +807,7 @@ impl CodeViewTextPrivate {
             return;
         }
         if text.bytes().nth(item.offset() as usize) == Some(b'\t') {
-            unsafe {
-                let mut ptr = std::mem::transmute::<&GlyphInfo, *mut pango::ffi::PangoGlyphInfo>(
-                    &glyph_info[0],
-                );
-                (*ptr).glyph = self.font_metrics.borrow().space_glyph;
-            }
+            glyph_info[0].set_glyph(self.font_metrics.borrow().space_glyph);
             glyph_info[0]
                 .geometry_mut()
                 .set_width((self.font_metrics.borrow().space_width * 4.0) as i32 * pango::SCALE);

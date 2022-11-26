@@ -275,7 +275,7 @@ impl GutterPrivate {
 
             if let Some(text_node) = gtk::gsk::TextNode::new(
                 &item.analysis().font(),
-                &mut glyphs,
+                &glyphs,
                 &color,
                 &graphene::Point::new(x + x_off, y),
             ) {
