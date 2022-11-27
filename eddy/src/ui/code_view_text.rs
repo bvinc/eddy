@@ -247,14 +247,9 @@ impl CodeViewTextPrivate {
         // let pango_attrs = self.create_pango_attr_list(&attrs);
         let pango_ctx = cvt.pango_context();
 
-        self.font_metrics.borrow_mut().font_height = 15.0;
-        self.font_metrics.borrow_mut().font_ascent = 15.0;
-        if let metrics = pango_ctx.metrics(None, None) {
-            self.font_metrics.borrow_mut().font_height =
-                metrics.height() as f64 / pango::SCALE as f64;
-            self.font_metrics.borrow_mut().font_ascent =
-                metrics.ascent() as f64 / pango::SCALE as f64;
-        }
+        let metrics = pango_ctx.metrics(None, None);
+        self.font_metrics.borrow_mut().font_height = metrics.height() as f64 / pango::SCALE as f64;
+        self.font_metrics.borrow_mut().font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
 
         let space = " ";
         // Itemize

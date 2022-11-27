@@ -81,21 +81,18 @@ impl WidgetImpl for GutterPrivate {
         let nchars = std::cmp::max(self.gutter_nchars.get(), 2) + 2;
 
         let pango_ctx = self.obj().pango_context();
-        if let metrics = pango_ctx.metrics(None, None) {
-            let font_width = metrics.approximate_digit_width() as f64 / pango::SCALE as f64;
-            let minimum_size = nchars as i32 * font_width as i32;
-            let natural_size = nchars as i32 * font_width as i32;
-            let minimum_baseline = -1;
-            let natural_baseline = -1;
-            (
-                minimum_size,
-                natural_size,
-                minimum_baseline,
-                natural_baseline,
-            )
-        } else {
-            (0, 0, -1, -1)
-        }
+        let metrics = pango_ctx.metrics(None, None);
+        let font_width = metrics.approximate_digit_width() as f64 / pango::SCALE as f64;
+        let minimum_size = nchars as i32 * font_width as i32;
+        let natural_size = nchars as i32 * font_width as i32;
+        let minimum_baseline = -1;
+        let natural_baseline = -1;
+        (
+            minimum_size,
+            natural_size,
+            minimum_baseline,
+            natural_baseline,
+        )
     }
     fn size_allocate(&self, w: i32, h: i32, bl: i32) {
         self.parent_size_allocate(w, h, bl);
@@ -148,12 +145,9 @@ impl GutterPrivate {
 
         // TESTING
         let pango_ctx = cv.pango_context();
-        let mut font_height = 15.0;
-        let mut font_ascent = 15.0;
-        if let metrics = pango_ctx.metrics(None, None) {
-            font_height = metrics.height() as f64 / pango::SCALE as f64;
-            font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
-        }
+        let metrics = pango_ctx.metrics(None, None);
+        let font_height = metrics.height() as f64 / pango::SCALE as f64;
+        let font_ascent = metrics.ascent() as f64 / pango::SCALE as f64;
 
         // cv.size_allocate(Rectangle::new(), -1);
 
