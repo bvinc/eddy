@@ -1,7 +1,8 @@
 use crate::lsp::{self, LanguageServerClient, ResultQueue};
 use crate::style::{AttrSpan, Theme};
-use crate::{Buffer, BufferUpdate, BufferUpdateSender};
+use crate::{Buffer, BufferUpdate, Event, EventSender};
 use anyhow::Context;
+use log::debug;
 use ropey::RopeSlice;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -25,7 +26,7 @@ pub struct Workspace {
     buffers: HashMap<BufferId, Rc<RefCell<Buffer>>>,
     pub theme: Theme,
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
-    bu_sender: Arc<Mutex<BufferUpdateSender>>,
+    event_sender: Arc<Mutex<EventSender>>,
 }
 
 impl Workspace {
@@ -37,12 +38,12 @@ impl Workspace {
             buffers: HashMap::new(),
             theme: Theme::new(),
             ls_client: None,
-            bu_sender: Arc::new(Mutex::new(BufferUpdateSender::new())),
+            event_sender: Arc::new(Mutex::new(EventSender::new())),
         }
     }
 
-    pub fn set_callback(&mut self, c: impl FnMut(BufferUpdate) + Send + 'static) {
-        self.bu_sender.lock().unwrap().callback = Some(Box::new(c));
+    pub fn set_event_callback(&mut self, c: impl FnMut(Event) + Send + 'static) {
+        self.event_sender.lock().unwrap().callback = Some(Box::new(c));
     }
 
     pub fn new_view(&mut self, path: Option<&Path>) -> Result<ViewId, io::Error> {
@@ -53,7 +54,7 @@ impl Workspace {
         self.views.insert(view_id, buf_id);
         dbg!("new view", view_id);
         let mut buffer = if let Some(path) = path {
-            let buf = Buffer::from_file(buf_id, path, self.bu_sender.clone())?;
+            let buf = Buffer::from_file(buf_id, path, self.event_sender.clone())?;
 
             dbg!(path);
             if let Some("rs") = path.extension().and_then(OsStr::to_str) {
@@ -85,7 +86,7 @@ impl Workspace {
                 let document_uri = Url::from_file_path(path).expect("url from path");
 
                 // let cb = self.callback.clone();
-                let bu_sender = self.bu_sender.clone();
+                let event_sender = self.event_sender.clone();
                 let document_text = buf.to_string();
                 ls_client.lock().expect("lock lsp").send_initialize(
                     Some(root_url),
@@ -94,7 +95,10 @@ impl Workspace {
                         println!("sending init");
                         ls_client.send_initialized();
                         println!("sending init done");
-                        bu_sender.lock().unwrap().send(BufferUpdate::LsInitialized);
+                        event_sender
+                            .lock()
+                            .unwrap()
+                            .send(Event::BufferUpdate(BufferUpdate::LsInitialized));
                         ls_client.send_did_open(view_id, document_uri, document_text);
                     },
                 );
@@ -103,12 +107,34 @@ impl Workspace {
             }
             buf
         } else {
-            Buffer::new(buf_id, self.bu_sender.clone())
+            Buffer::new(buf_id, self.event_sender.clone())
         };
         buffer.init_view(view_id);
         self.buffers.insert(buf_id, Rc::new(RefCell::new(buffer)));
 
+        self.event_sender
+            .lock()
+            .unwrap()
+            .send(Event::NewView { view_id });
+
         Ok(view_id)
+    }
+
+    pub fn close_view(&self, view_id: usize) {
+        debug!("close view {}", view_id);
+    }
+
+    pub fn display_name(&self, view_id: usize) -> String {
+        self.buffers
+            .get(&view_id)
+            .and_then(|b| {
+                b.borrow()
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|p| p.to_string_lossy().to_string())
+            })
+            .unwrap_or("Untitled".to_string())
     }
 
     pub fn ls_initialized(&mut self) {

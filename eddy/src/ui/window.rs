@@ -1,6 +1,6 @@
-use crate::app::{EddyApplication, EddyApplicationPrivate, Event};
-use crate::ui::{CodeView, DirBar};
-use eddy_workspace::{ViewId, Workspace};
+use crate::app::{EddyApplication, EddyApplicationPrivate};
+use crate::ui::{CodeView, DirBar, TabLabel};
+use eddy_workspace::{BufferUpdate, Event, ViewId, Workspace};
 use glib::Sender;
 use gtk::glib::subclass;
 use gtk::prelude::*;
@@ -18,7 +18,6 @@ struct Page {
 
 pub struct EddyApplicationWindowPrivate {
     app: OnceCell<EddyApplication>,
-    sender: OnceCell<Sender<Event>>,
     notebook: gtk::Notebook,
     pages: RefCell<Vec<Page>>,
 }
@@ -34,7 +33,6 @@ impl ObjectSubclass for EddyApplicationWindowPrivate {
     fn new() -> Self {
         Self {
             app: OnceCell::new(),
-            sender: OnceCell::new(),
             notebook: gtk::Notebook::new(),
             pages: RefCell::new(vec![]),
         }
@@ -65,7 +63,6 @@ impl EddyApplicationWindow {
         let app: EddyApplication = self.application().unwrap().downcast().unwrap();
         let app_private = EddyApplicationPrivate::from_instance(&app);
         let self_ = EddyApplicationWindowPrivate::from_instance(self);
-        let _ = self_.sender.set(app_private.sender.clone());
 
         self.set_default_size(1150, 750);
         self.set_icon_name(Some("text-x-generic"));
@@ -80,7 +77,7 @@ impl EddyApplicationWindow {
         header_bar.pack_end(&menu_button);
 
         let dir_bar = DirBar::new();
-        dir_bar.init(app_private.sender.clone());
+        dir_bar.init(app_private.workspace.clone());
 
         let sidebar_scrolled_window = gtk::ScrolledWindow::builder()
             // .hadjustment(&sidebar_hadj)
@@ -110,23 +107,15 @@ impl EddyApplicationWindow {
 
     fn setup_signals(&self) {}
 
-    pub fn new_view(&self, view_id: ViewId, path: Option<&Path>) -> Result<(), anyhow::Error> {
-        let self_ = EddyApplicationWindowPrivate::from_instance(self);
+    pub fn new_view(&self, view_id: ViewId) -> Result<(), anyhow::Error> {
         let app: EddyApplication = self.application().unwrap().downcast().unwrap();
         let app_private = EddyApplicationPrivate::from_instance(&app);
-        let file_name = path
-            .and_then(|p| p.file_name())
-            .map(|p| p.to_string_lossy().to_string());
-        let page_num = self_.notebook.append_page(
-            &CodeView::new(
-                app_private.workspace.clone(),
-                app_private.sender.clone(),
-                view_id,
-            ),
-            Some(&gtk::Label::new(file_name.as_deref())),
+        let page_num = self.imp().notebook.append_page(
+            &CodeView::new(app_private.workspace.clone(), view_id),
+            Some(&TabLabel::new(app_private.workspace.clone(), view_id)),
         );
-        self_.notebook.set_page(page_num as i32);
-        self_.pages.borrow_mut().push(Page {
+        self.imp().notebook.set_page(page_num as i32);
+        self.imp().pages.borrow_mut().push(Page {
             view_id,
             pristine: true,
         });
@@ -134,41 +123,15 @@ impl EddyApplicationWindow {
         Ok(())
     }
 
-    pub fn buffer_changed(&self, view_id: ViewId) {
-        let self_ = EddyApplicationWindowPrivate::from_instance(self);
-
-        // let pages = self_.pages.borrow();
-        // for page in pages {
-
-        // }
-
-        for page_num in 0..self_.notebook.n_pages() {
-            if let Some(cv) = self_.notebook.nth_page(Some(page_num)) {
-                if let Some(cv) = cv.downcast_ref::<CodeView>() {
-                    let cv_view_id = cv.view_id();
-                    if view_id == cv_view_id {
-                        cv.buffer_changed();
-                    }
+    pub fn process_event(&self, event: &Event) {
+        for page_num in 0..self.imp().notebook.n_pages() {
+            if let Some(cv) = self.imp().notebook.nth_page(Some(page_num)) {
+                if let Some(tl) = self.imp().notebook.tab_label(&cv) {
+                    let tl: TabLabel = tl.downcast().unwrap();
+                    tl.process_event(event);
                 }
-            }
-        }
-    }
-
-    pub fn scroll_to_carets(&self, view_id: ViewId) {
-        let self_ = EddyApplicationWindowPrivate::from_instance(self);
-
-        // let pages = self_.pages.borrow();
-        // for page in pages {
-
-        // }
-
-        for page_num in 0..self_.notebook.n_pages() {
-            if let Some(cv) = self_.notebook.nth_page(Some(page_num)) {
                 if let Some(cv) = cv.downcast_ref::<CodeView>() {
-                    let cv_view_id = cv.view_id();
-                    if view_id == cv_view_id {
-                        cv.scroll_to_carets();
-                    }
+                    cv.process_event(event);
                 }
             }
         }

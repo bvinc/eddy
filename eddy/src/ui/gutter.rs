@@ -1,4 +1,3 @@
-use crate::app::Event;
 use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::Workspace;
@@ -22,7 +21,6 @@ use std::time::Instant;
 
 pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
-    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     theme: Theme,
@@ -39,7 +37,6 @@ impl ObjectSubclass for GutterPrivate {
     type Class = subclass::basic::ClassStruct<Self>;
 
     fn new() -> Self {
-        let sender = OnceCell::new();
         let workspace = OnceCell::new();
         let view_id = Cell::new(0);
         let theme = Theme::default();
@@ -48,7 +45,6 @@ impl ObjectSubclass for GutterPrivate {
 
         Self {
             vadj,
-            sender,
             workspace,
             view_id,
             theme,
@@ -299,12 +295,11 @@ glib::wrapper! {
 }
 
 impl Gutter {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: usize) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: usize) -> Self {
         let gutter = glib::Object::new::<Self>(&[]);
         let gutter_priv = GutterPrivate::from_instance(&gutter);
 
         let _ = gutter_priv.workspace.set(workspace);
-        let _ = gutter_priv.sender.set(sender);
         let _ = gutter_priv.view_id.set(view_id);
 
         gutter_priv.buffer_changed(&gutter);

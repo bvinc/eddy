@@ -1,10 +1,9 @@
-use crate::app::Event;
 use crate::color::{pango_to_gdk, text_theme_to_gdk};
 use crate::theme::Theme;
 use crate::ui::{Layout, LayoutItem, LayoutLine};
 use cairo::glib::{ParamSpecEnum, ParamSpecObject};
 use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::{Buffer, Selection, Workspace};
+use eddy_workspace::{Buffer, Event, Selection, Workspace};
 use gdk::{Key, ModifierType};
 use glib::{clone, ParamSpec, Sender};
 use gtk::glib::subclass;
@@ -31,7 +30,6 @@ pub struct CodeViewTextPrivate {
     hscroll_policy: gtk::ScrollablePolicy,
     vadj: RefCell<Adjustment>,
     vscroll_policy: gtk::ScrollablePolicy,
-    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     font_metrics: RefCell<FontMetrics>,
@@ -61,7 +59,6 @@ impl ObjectSubclass for CodeViewTextPrivate {
     type Interfaces = (gtk::Scrollable,);
 
     fn new() -> Self {
-        let sender = OnceCell::new();
         let workspace = OnceCell::new();
         let view_id = Cell::new(0);
         let font_metrics = RefCell::new(FontMetrics::default());
@@ -75,7 +72,6 @@ impl ObjectSubclass for CodeViewTextPrivate {
             hscroll_policy: gtk::ScrollablePolicy::Minimum,
             vadj,
             vscroll_policy: gtk::ScrollablePolicy::Minimum,
-            sender,
             workspace,
             view_id,
             font_metrics,
@@ -810,13 +806,12 @@ glib::wrapper! {
 }
 
 impl CodeViewText {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: usize) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: usize) -> Self {
         let obj = glib::Object::new::<Self>(&[]);
         let imp = CodeViewTextPrivate::from_instance(&obj);
 
         imp.view_id.set(view_id);
         imp.workspace.set(workspace);
-        imp.sender.set(sender);
 
         // code_view.setup_widgets();
         // code_view.setup_signals();
@@ -1011,6 +1006,9 @@ impl CodeViewText {
                         }
                         'v' if ctrl => {
                             // self.do_paste(state);
+                        }
+                        's' if ctrl => {
+                            buffer.borrow_mut().save();
                         }
                         't' if ctrl => {
                             // TODO new tab

@@ -1,27 +1,21 @@
 use crate::ui::EddyApplicationWindow;
 use anyhow::*;
 use cairo::glib::translate::FromGlib;
-use eddy_workspace::{BufferId, BufferUpdate, Workspace};
+use eddy_workspace::{BufferId, BufferUpdate, Event, ViewId, Workspace};
 use gio::ApplicationFlags;
+use glib::subclass::Signal;
 use glib::{subclass, Receiver, Sender, WeakRef};
 use gtk::prelude::*;
 use gtk::subclass::application::GtkApplicationImpl;
 use gtk::subclass::prelude::{ApplicationImpl, *};
 use gtk::{glib, ButtonsType, DialogFlags, MessageDialog, MessageType};
 use log::*;
+use once_cell::sync::Lazy;
 use once_cell::unsync::OnceCell;
 use std::cell::RefCell;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
-#[derive(Clone, Debug)]
-pub enum Event {
-    Open(PathBuf),
-    BufferChange { view_id: usize },
-    ScrollToCarets { view_id: usize },
-    BufferUpdate(BufferUpdate),
-}
 
 pub struct EddyApplicationPrivate {
     pub sender: Sender<Event>,
@@ -39,7 +33,7 @@ impl ObjectSubclass for EddyApplicationPrivate {
     type Class = subclass::basic::ClassStruct<Self>;
 
     fn new() -> Self {
-        let (sender, r) = glib::MainContext::channel(unsafe { glib::Priority::from_glib(200) });
+        let (sender, r) = glib::MainContext::channel(glib::PRIORITY_DEFAULT_IDLE);
         let receiver = RefCell::new(Some(r));
         let workspace = Rc::new(RefCell::new(Workspace::new()));
         let window = OnceCell::new();
@@ -52,7 +46,13 @@ impl ObjectSubclass for EddyApplicationPrivate {
     }
 }
 
-impl ObjectImpl for EddyApplicationPrivate {}
+impl ObjectImpl for EddyApplicationPrivate {
+    fn signals() -> &'static [Signal] {
+        static SIGNALS: Lazy<Vec<Signal>> =
+            Lazy::new(|| vec![Signal::builder("pristine-changed").build()]);
+        SIGNALS.as_ref()
+    }
+}
 impl GtkApplicationImpl for EddyApplicationPrivate {}
 impl ApplicationImpl for EddyApplicationPrivate {
     fn activate(&self) {
@@ -69,12 +69,14 @@ impl ApplicationImpl for EddyApplicationPrivate {
         info!("created window");
 
         let receiver = self.receiver.borrow_mut().take().unwrap();
-        receiver.attach(None, move |action| app.process_action(action));
+        receiver.attach(None, move |event| app.process_event(&event));
 
         let sender = self.sender.clone();
-        self.workspace.borrow_mut().set_callback(move |bu_msg| {
-            sender.send(Event::BufferUpdate(bu_msg));
-        });
+        self.workspace
+            .borrow_mut()
+            .set_event_callback(move |event| {
+                sender.send(event).expect("send error");
+            });
     }
 }
 
@@ -116,39 +118,24 @@ impl EddyApplication {
             self_.workspace.get().unwrap().borrow_mut().deref_mut()
         }
     */
-    fn process_action(&self, action: Event) -> glib::Continue {
-        debug!("{:?}", &action);
-        match action {
-            Event::Open(pb) => self.show_err(self.action_open(&pb)),
-            Event::BufferChange { view_id } => self.action_buffer_change(view_id),
-            Event::ScrollToCarets { view_id } => self.action_scroll_to_carets(view_id),
-            Event::BufferUpdate(bu) => self.handle_buffer_update(bu),
+    fn process_event(&self, event: &Event) -> glib::Continue {
+        debug!("{:?}", &event);
+        match event {
+            Event::NewView { view_id } => self.show_err(self.event_new_view(*view_id)),
+            e => self.get_main_window().process_event(e),
         }
         glib::Continue(true)
     }
 
-    fn action_open(&self, path: &Path) -> Result<(), anyhow::Error> {
-        if !path.is_absolute() {
-            bail!("path is not absolute");
-        }
+    fn event_new_view(&self, view_id: ViewId) -> Result<(), anyhow::Error> {
+        // if !path.is_absolute() {
+        //     bail!("path is not absolute");
+        // }
         let self_ = EddyApplicationPrivate::from_instance(self);
-        let view_id = self_.workspace.borrow_mut().new_view(Some(path))?;
         let window = self.get_main_window();
-        window.new_view(view_id, Some(path)).context("new_view")?;
+        window.new_view(view_id).context("new_view")?;
         Ok(())
     }
-
-    fn action_buffer_change(&self, view_id: usize) {
-        let window = self.get_main_window();
-        window.buffer_changed(view_id);
-    }
-
-    fn action_scroll_to_carets(&self, view_id: usize) {
-        let window = self.get_main_window();
-        window.scroll_to_carets(view_id);
-    }
-
-    fn handle_buffer_update(&self, bu: BufferUpdate) {}
 
     fn show_err(&self, res: Result<(), anyhow::Error>) {
         if let Err(e) = res {
@@ -166,24 +153,4 @@ impl EddyApplication {
     }
 }
 
-impl EddyApplicationPrivate {
-    fn process_buffer_update(&self, bu: BufferUpdate) {
-        debug!("buffer update {:?}", &bu);
-        match bu {
-            BufferUpdate::LsInitialized => self.bu_ls_initialized(),
-            BufferUpdate::PathChanged(buf_id) => self.bu_path_changed(buf_id),
-            BufferUpdate::PristineChanged(buf_id) => self.bu_pristine_changed(buf_id),
-        }
-    }
-
-    fn bu_ls_initialized(&self) {
-        debug!("ls initialized");
-    }
-
-    fn bu_path_changed(&self, buf_id: BufferId) {
-        debug!("path changed");
-    }
-    fn bu_pristine_changed(&self, buf_id: BufferId) {
-        debug!("pristine changed");
-    }
-}
+impl EddyApplicationPrivate {}

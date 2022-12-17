@@ -1,5 +1,6 @@
-use crate::app::{EddyApplication, Event};
+use crate::app::EddyApplication;
 use anyhow::bail;
+use eddy_workspace::Workspace;
 use glib::Sender;
 use gtk::glib::subclass;
 use gtk::prelude::*;
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub struct DirBarPrivate {
-    sender: OnceCell<Sender<Event>>,
+    workspace: OnceCell<Rc<RefCell<Workspace>>>,
     dir: Rc<RefCell<Option<PathBuf>>>,
     tree_store: TreeStore,
 }
@@ -33,7 +34,7 @@ impl ObjectSubclass for DirBarPrivate {
 
         let tree_store = TreeStore::new(&[String::static_type(), bool::static_type()]);
         Self {
-            sender: OnceCell::new(),
+            workspace: OnceCell::new(),
             dir: Rc::new(RefCell::new(Some(pb))),
             tree_store: tree_store.clone(),
         }
@@ -75,10 +76,16 @@ impl gtk::subclass::prelude::TreeViewImpl for DirBarPrivate {
         }
         match tree_path_to_path(dir.as_ref(), &self.tree_store, &tp) {
             Ok(path) => {
-                // send parent an OpenPath signal
                 if let Ok(path) = path.canonicalize() {
                     dbg!(&path);
-                    send!(self.sender.get().unwrap(), Event::Open(path));
+                    // send!(self.sender.get().unwrap(), Event::Open(path));
+                    // self.workspace.get().unwrap().open(path);
+                    let _ = self
+                        .workspace
+                        .get()
+                        .unwrap()
+                        .borrow_mut()
+                        .new_view(Some(&path));
                 }
             }
             Err(e) => {
@@ -102,10 +109,10 @@ impl DirBar {
         dir_bar
     }
 
-    pub fn init(&self, sender: Sender<Event>) {
+    pub fn init(&self, workspace: Rc<RefCell<Workspace>>) {
         let self_ = DirBarPrivate::from_instance(self);
 
-        let _ = self_.sender.set(sender);
+        let _ = self_.workspace.set(workspace);
     }
 
     fn setup_widgets(&self) {

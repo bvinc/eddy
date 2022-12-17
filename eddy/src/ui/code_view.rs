@@ -1,8 +1,7 @@
 use super::{CodeViewText, Gutter};
-use crate::app::Event;
 use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan};
-use eddy_workspace::{ViewId, Workspace};
+use eddy_workspace::{BufferId, Event, ViewId, Workspace};
 use gdk::{Key, ModifierType};
 use glib::{clone, Sender};
 use gtk::glib::subclass;
@@ -25,7 +24,6 @@ pub struct CodeViewPrivate {
     gutter: OnceCell<Gutter>,
     hadj: Adjustment,
     vadj: Adjustment,
-    sender: OnceCell<Sender<Event>>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
     view_id: Cell<usize>,
     theme: Theme,
@@ -41,7 +39,6 @@ impl ObjectSubclass for CodeViewPrivate {
     type Class = subclass::basic::ClassStruct<Self>;
 
     fn new() -> Self {
-        let sender = OnceCell::new();
         let workspace = OnceCell::new();
         let cvt = OnceCell::new();
         let gutter = OnceCell::new();
@@ -52,7 +49,6 @@ impl ObjectSubclass for CodeViewPrivate {
         let vadj = Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
         Self {
-            sender,
             workspace,
             cvt,
             gutter,
@@ -107,17 +103,17 @@ glib::wrapper! {
 }
 
 impl CodeView {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, sender: Sender<Event>, view_id: ViewId) -> Self {
+    pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: ViewId) -> Self {
         let obj = glib::Object::new::<Self>(&[]);
         let imp = CodeViewPrivate::from_instance(&obj);
         imp.view_id.set(view_id);
 
-        let cvt = CodeViewText::new(workspace.clone(), sender.clone(), view_id);
+        let cvt = CodeViewText::new(workspace.clone(), view_id);
         cvt.set_hadjust(&imp.hadj);
         cvt.set_vadjust(&imp.vadj);
         let _ = imp.cvt.set(cvt.clone());
 
-        let gutter = Gutter::new(workspace.clone(), sender.clone(), view_id);
+        let gutter = Gutter::new(workspace.clone(), view_id);
         gutter.set_vadjust(&imp.vadj);
         let _ = imp.gutter.set(gutter.clone());
 
@@ -136,37 +132,42 @@ impl CodeView {
 
         cvt.set_hscroll_policy(gtk::ScrollablePolicy::Natural);
 
-        let _ = imp.sender.set(sender.clone());
-
         let _ = imp.workspace.set(workspace.clone());
         // dbg!(code_view_priv.workspace.get().is_none());
-
-        // Subscribe to buffer change events.  Add a callback to queue drawing
-        // on our drawing areas.
-        {
-            let workspace = imp.workspace.get().unwrap().borrow_mut();
-            let sender2 = imp.sender.get().unwrap().clone();
-            let buffer = workspace.buffer(imp.view_id.get());
-            let view_id = imp.view_id.get();
-            buffer.borrow_mut().connect_update(move || {
-                if let Err(err) = sender2.send(Event::BufferChange { view_id }) {
-                    error!("buffer changed: {}", err);
-                };
-            });
-
-            let sender3 = imp.sender.get().unwrap().clone();
-            buffer
-                .borrow_mut()
-                .connect_scroll_to_selections(view_id, move || {
-                    if let Err(err) = sender3.send(Event::ScrollToCarets { view_id }) {
-                        error!("scroll to selections: {}", err);
-                    };
-                });
-        }
 
         obj.setup_widgets();
         // code_view.setup_signals();
         obj
+    }
+
+    pub fn process_event(&self, event: &Event) {
+        let bid = self
+            .imp()
+            .workspace
+            .get()
+            .unwrap()
+            .borrow()
+            .buffer(self.imp().view_id.get())
+            .borrow()
+            .id;
+        match event {
+            Event::ScrollToCarets { buffer_id } if bid == *buffer_id => self.scroll_to_carets(),
+            Event::BufferChange { buffer_id } if bid == *buffer_id => self.buffer_changed(),
+            _ => {}
+        }
+    }
+
+    fn bu_ls_initialized(&self) {
+        debug!("ls initialized");
+    }
+
+    fn bu_path_changed(&self, buf_id: BufferId) {
+        debug!("path changed");
+    }
+
+    fn bu_pristine_changed(&self, buf_id: BufferId) {
+        debug!("pristine changed");
+        self.emit_by_name::<()>("pristine-changed", &[]);
     }
 
     pub fn view_id(&self) -> usize {
