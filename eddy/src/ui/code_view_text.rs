@@ -34,7 +34,6 @@ pub struct CodeViewTextPrivate {
     view_id: Cell<usize>,
     font_metrics: RefCell<FontMetrics>,
     theme: Theme,
-    gesture_drag: gtk::GestureDrag,
     // When starting a double-click drag or triple-click drag, the initial
     // selection is saved here.
     drag_anchor: Selection,
@@ -76,7 +75,6 @@ impl ObjectSubclass for CodeViewTextPrivate {
             view_id,
             font_metrics,
             theme,
-            gesture_drag: gtk::GestureDrag::new(),
             drag_anchor: Selection::new(),
             highlighted_lines: RefCell::new(HashSet::new()),
         }
@@ -160,23 +158,22 @@ impl ObjectImpl for CodeViewTextPrivate {
             this_.button_pressed(&this, gc, n_press, x, y);
             // gc.set_state(gtk::EventSequenceState::Claimed);
         }));
-        obj.add_controller(&gesture_click);
+        obj.add_controller(gesture_click);
 
-        self.gesture_drag.set_button(gdk::BUTTON_PRIMARY);
-        // self.gesture_drag.connect_drag_begin(|gd, x, y| {
+        let gesture_drag = gtk::GestureDrag::new();
+        gesture_drag.set_button(gdk::BUTTON_PRIMARY);
+        // gesture_drag.connect_drag_begin(|gd, x, y| {
         //     dbg!("drag begin");
         // });
-        self.gesture_drag
-            .connect_drag_end(clone!(@strong obj as this => move |gd, _, _| {
-                this.drag_end(gd);
-            }));
-        self.gesture_drag
-            .connect_drag_update(clone!(@strong obj as this => move |gd, _, _| {
-                this.drag_update(gd);
-                // gd.set_state(gtk::EventSequenceState::Claimed);
-            }));
+        gesture_drag.connect_drag_end(clone!(@strong obj as this => move |gd, _, _| {
+            this.drag_end(gd);
+        }));
+        gesture_drag.connect_drag_update(clone!(@strong obj as this => move |gd, _, _| {
+            this.drag_update(gd);
+            // gd.set_state(gtk::EventSequenceState::Claimed);
+        }));
 
-        obj.add_controller(&self.gesture_drag);
+        obj.add_controller(gesture_drag);
 
         let event_controller_key = gtk::EventControllerKey::new();
         event_controller_key.connect_key_pressed(
@@ -185,7 +182,7 @@ impl ObjectImpl for CodeViewTextPrivate {
                 gtk::Inhibit(true)
             }),
         );
-        obj.add_controller(&event_controller_key);
+        obj.add_controller(event_controller_key);
 
         // let event_controller_scroll = gtk::EventControllerScroll::builder()
         //     // .flags(
@@ -807,8 +804,8 @@ glib::wrapper! {
 
 impl CodeViewText {
     pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: usize) -> Self {
-        let obj = glib::Object::new::<Self>(&[]);
-        let imp = CodeViewTextPrivate::from_instance(&obj);
+        let obj = glib::Object::new::<Self>();
+        let imp = CodeViewTextPrivate::from_obj(&obj);
 
         imp.view_id.set(view_id);
         imp.workspace.set(workspace);
@@ -823,7 +820,7 @@ impl CodeViewText {
     // fn setup_signals(&self) {}
 
     pub fn set_hadjust(&self, adj: &Adjustment) {
-        let cvt_priv = CodeViewTextPrivate::from_instance(self);
+        let cvt_priv = CodeViewTextPrivate::from_obj(self);
         cvt_priv.hadj.replace(adj.clone());
         cvt_priv
             .hadj
@@ -834,7 +831,7 @@ impl CodeViewText {
     }
 
     pub fn set_vadjust(&self, adj: &Adjustment) {
-        let cvt_priv = CodeViewTextPrivate::from_instance(self);
+        let cvt_priv = CodeViewTextPrivate::from_obj(self);
         cvt_priv.vadj.replace(adj.clone());
         cvt_priv
             .vadj
@@ -845,18 +842,18 @@ impl CodeViewText {
     }
 
     pub fn buffer_changed(&self) {
-        let code_view_priv = CodeViewTextPrivate::from_instance(self);
+        let code_view_priv = CodeViewTextPrivate::from_obj(self);
         code_view_priv.buffer_changed(self);
     }
 
     pub fn scroll_to_carets(&self) {
-        let code_view_priv = CodeViewTextPrivate::from_instance(self);
+        let code_view_priv = CodeViewTextPrivate::from_obj(self);
         code_view_priv.scroll_to_carets(self);
     }
 
     fn drag_update(&self, gd: &gtk::GestureDrag) {
         self.grab_focus();
-        let self_ = CodeViewTextPrivate::from_instance(self);
+        let self_ = CodeViewTextPrivate::from_obj(self);
 
         let (start_x, start_y) = gd.start_point().unwrap();
         let (off_x, off_y) = gd.offset().unwrap();
@@ -867,20 +864,20 @@ impl CodeViewText {
     }
 
     fn drag_end(&self, _gd: &gtk::GestureDrag) {
-        let self_ = CodeViewTextPrivate::from_instance(self);
+        let self_ = CodeViewTextPrivate::from_obj(self);
         self_.drag_end(self);
     }
 
     // fn middle_button_pressed(&self, n_pressed: i32, x: f64, y: f64) {
     //     self.grab_focus();
-    //     let self_ = CodeViewTextPrivate::from_instance(self);
+    //     let self_ = CodeViewTextPrivate::from_obj(self);
 
     //     let (col, line) = { self.da_px_to_cell(&main_state, x, y) };
     //     self.do_paste_primary(&self.view_id, line, col);
     // }
 
     fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
-        let self_ = CodeViewTextPrivate::from_instance(self);
+        let self_ = CodeViewTextPrivate::from_obj(self);
         debug!(
             "key press keyval={:?}, state={:?}, uc={:?}",
             key,

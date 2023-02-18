@@ -104,8 +104,8 @@ glib::wrapper! {
 
 impl CodeView {
     pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: ViewId) -> Self {
-        let obj = glib::Object::new::<Self>(&[]);
-        let imp = CodeViewPrivate::from_instance(&obj);
+        let obj = glib::Object::new::<Self>();
+        let imp = CodeViewPrivate::from_obj(&obj);
         imp.view_id.set(view_id);
 
         let cvt = CodeViewText::new(workspace.clone(), view_id);
@@ -171,17 +171,17 @@ impl CodeView {
     }
 
     pub fn view_id(&self) -> usize {
-        let code_view_priv = CodeViewPrivate::from_instance(&self);
+        let code_view_priv = CodeViewPrivate::from_obj(&self);
         code_view_priv.view_id.get()
     }
 
     pub fn buffer_changed(&self) {
-        let cv_priv = CodeViewPrivate::from_instance(&self);
+        let cv_priv = CodeViewPrivate::from_obj(&self);
         cv_priv.buffer_changed()
     }
 
     pub fn scroll_to_carets(&self) {
-        let cv_priv = CodeViewPrivate::from_instance(&self);
+        let cv_priv = CodeViewPrivate::from_obj(&self);
         cv_priv.scroll_to_carets()
     }
 

@@ -26,8 +26,8 @@ glib::wrapper! {
 
 impl TabLabel {
     pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: ViewId) -> Self {
-        let obj = glib::Object::new::<Self>(&[]);
-        let imp = imp::TabLabel::from_instance(&obj);
+        let obj = glib::Object::new::<Self>();
+        let imp = imp::TabLabel::from_obj(&obj);
         imp.workspace.set(workspace.clone());
         imp.view_id.set(view_id);
 
@@ -49,7 +49,7 @@ impl TabLabel {
     }
 
     pub fn view_id(&self) -> usize {
-        let code_view_priv = imp::TabLabel::from_instance(&self);
+        let code_view_priv = imp::TabLabel::from_obj(&self);
         code_view_priv.view_id.get()
     }
 

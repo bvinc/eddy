@@ -102,7 +102,7 @@ glib::wrapper! {
 
 impl DirBar {
     pub fn new() -> Self {
-        let dir_bar = glib::Object::new::<Self>(&[]);
+        let dir_bar = glib::Object::new::<Self>();
 
         dir_bar.setup_widgets();
         dir_bar.setup_signals();
@@ -110,13 +110,13 @@ impl DirBar {
     }
 
     pub fn init(&self, workspace: Rc<RefCell<Workspace>>) {
-        let self_ = DirBarPrivate::from_instance(self);
+        let self_ = DirBarPrivate::from_obj(self);
 
         let _ = self_.workspace.set(workspace);
     }
 
     fn setup_widgets(&self) {
-        let self_ = DirBarPrivate::from_instance(self);
+        let self_ = DirBarPrivate::from_obj(self);
 
         let column0 = TreeViewColumn::new();
         let cell0 = CellRendererText::new();

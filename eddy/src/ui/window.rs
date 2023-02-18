@@ -51,7 +51,9 @@ glib::wrapper! {
 
 impl EddyApplicationWindow {
     pub fn new(app: EddyApplication) -> Self {
-        let window = glib::Object::new::<Self>(&[("application", &app)]);
+        let window: EddyApplicationWindow = glib::Object::builder()
+            .property("application", &app)
+            .build();
 
         app.add_window(&window);
         window.setup_widgets();
@@ -61,8 +63,8 @@ impl EddyApplicationWindow {
 
     fn setup_widgets(&self) {
         let app: EddyApplication = self.application().unwrap().downcast().unwrap();
-        let app_private = EddyApplicationPrivate::from_instance(&app);
-        let self_ = EddyApplicationWindowPrivate::from_instance(self);
+        let app_private = EddyApplicationPrivate::from_obj(&app);
+        let self_ = EddyApplicationWindowPrivate::from_obj(self);
 
         self.set_default_size(1150, 750);
         self.set_icon_name(Some("text-x-generic"));

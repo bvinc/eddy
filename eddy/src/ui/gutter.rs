@@ -296,8 +296,8 @@ glib::wrapper! {
 
 impl Gutter {
     pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: usize) -> Self {
-        let gutter = glib::Object::new::<Self>(&[]);
-        let gutter_priv = GutterPrivate::from_instance(&gutter);
+        let gutter = glib::Object::new::<Self>();
+        let gutter_priv = GutterPrivate::from_obj(&gutter);
 
         let _ = gutter_priv.workspace.set(workspace);
         let _ = gutter_priv.view_id.set(view_id);
@@ -308,7 +308,7 @@ impl Gutter {
     }
 
     pub fn set_vadjust(&self, adj: &Adjustment) {
-        let gutter_priv = GutterPrivate::from_instance(self);
+        let gutter_priv = GutterPrivate::from_obj(self);
         gutter_priv.vadj.replace(adj.clone());
         gutter_priv
             .vadj
@@ -319,7 +319,7 @@ impl Gutter {
     }
 
     pub fn buffer_changed(&self) {
-        let code_view_priv = GutterPrivate::from_instance(self);
+        let code_view_priv = GutterPrivate::from_obj(self);
         code_view_priv.buffer_changed(self);
     }
 }

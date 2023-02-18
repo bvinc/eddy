@@ -90,10 +90,10 @@ impl EddyApplication {
     pub fn run() {
         info!("run");
 
-        let app = glib::Object::new::<Self>(&[
-            ("application-id", &Some("com.github.bvinc.eddy")),
-            ("flags", &ApplicationFlags::empty()),
-        ]);
+        let app: EddyApplication = glib::Object::builder()
+            .property("application-id", &"com.github.bvinc.eddy")
+            .property("flags", &ApplicationFlags::empty())
+            .build();
 
         let args: Vec<String> = env::args().collect();
         app.run_with_args(&args);
