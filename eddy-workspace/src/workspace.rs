@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::future::Future;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -22,11 +22,12 @@ pub type ViewId = usize;
 pub struct Workspace {
     next_view_id: ViewId,
     next_buf_id: BufferId,
-    views: HashMap<ViewId, BufferId>,
+    pub views: HashMap<ViewId, BufferId>,
     buffers: HashMap<BufferId, Rc<RefCell<Buffer>>>,
     pub theme: Theme,
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
     event_sender: Arc<Mutex<EventSender>>,
+    pub dir: PathBuf,
 }
 
 impl Workspace {
@@ -39,6 +40,7 @@ impl Workspace {
             theme: Theme::new(),
             ls_client: None,
             event_sender: Arc::new(Mutex::new(EventSender::new())),
+            dir: std::env::current_dir().expect("cwd"),
         }
     }
 

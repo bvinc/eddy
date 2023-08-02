@@ -1,14 +1,16 @@
 [workspace]
 members = [
-	"eddy",
-	"eddy-workspace",
-	"eddy-ts",
+  "eddy",
+  "eddy-workspace",
+  "eddy-ts",
+  "eddy-gflux",
+  "wasm-test",
 ]
 
 [profile.release]
-lto = true
 codegen-units = 1
 debug = 1
+lto = true
 
 # [patch.crates-io]
 # cairo-rs = { git = "https://github.com/gtk-rs/gtk-rs-core" }
