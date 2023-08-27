@@ -1,15 +1,16 @@
 [package]
-name = "tree-sitter-rust"
-description = "Rust grammar for the tree-sitter parsing library"
-version = "0.20.1"
 authors = ["Max Brunsfeld <maxbrunsfeld@gmail.com>"]
-license = "MIT"
-readme = "bindings/rust/README.md"
-keywords = ["incremental", "parsing", "rust"]
 categories = ["parsing", "text-editors"]
+description = "Rust grammar for the tree-sitter parsing library"
+edition = "2021"
+keywords = ["incremental", "parsing", "rust"]
+license = "MIT"
+name = "tree-sitter-rust"
+readme = "bindings/rust/README.md"
 repository = "https://github.com/tree-sitter/tree-sitter-rust"
-edition = "2018"
+version = "0.20.1"
 
+autoexamples = false
 build = "bindings/rust/build.rs"
 include = [
   "bindings/rust/*",
@@ -17,7 +18,6 @@ include = [
   "queries/*",
   "src/*",
 ]
-autoexamples = false
 
 [lib]
 path = "bindings/rust/lib.rs"

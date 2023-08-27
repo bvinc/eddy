@@ -1,14 +1,14 @@
 [package]
-name = "tree-sitter-c"
-description = "C grammar for the tree-sitter parsing library"
-version = "0.20.0"
 authors = ["Max Brunsfeld <maxbrunsfeld@gmail.com>"]
-license = "MIT"
-readme = "bindings/rust/README.md"
-keywords = ["incremental", "parsing", "c"]
 categories = ["parsing", "text-editors"]
+description = "C grammar for the tree-sitter parsing library"
+edition = "2021"
+keywords = ["incremental", "parsing", "c"]
+license = "MIT"
+name = "tree-sitter-c"
+readme = "bindings/rust/README.md"
 repository = "https://github.com/tree-sitter/tree-sitter-c"
-edition = "2018"
+version = "0.20.0"
 
 build = "bindings/rust/build.rs"
 include = ["bindings/rust/*", "grammar.js", "queries/*", "src/*"]
