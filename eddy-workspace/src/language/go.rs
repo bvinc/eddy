@@ -64,7 +64,7 @@ impl Layer for GoLayer {
 
     fn update_highlights(&mut self, rope: &Rope) {
         self.tree = self.parser.parse_with(
-            &mut |byte_idx, pos| {
+            &mut |byte_idx, _pos| {
                 if byte_idx > rope.len_bytes() {
                     return [].as_ref();
                 }

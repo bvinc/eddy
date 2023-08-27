@@ -1,28 +1,28 @@
 use crate::color::{pango_to_gdk, text_theme_to_gdk};
 use crate::components::code_view_text::CodeViewTextComponent;
 use crate::theme::Theme;
-use crate::widgets::layout::{Layout, LayoutItem, LayoutLine};
+use crate::widgets::layout::{LayoutItem, LayoutLine};
 use cairo::glib::{ParamSpecEnum, ParamSpecObject};
 use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::{Buffer, Event, Selection, Workspace};
+use eddy_workspace::{Buffer, Selection};
 use gdk::{Key, ModifierType};
 use gflux::ComponentCtx;
-use glib::{clone, ParamSpec, Propagation, Sender};
+use glib::{clone, ParamSpec, Propagation};
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{gdk, glib, graphene, Adjustment, Gesture};
+use gtk::{gdk, glib, graphene, Adjustment};
 use log::*;
-use lru_cache::LruCache;
+
 use once_cell::sync::Lazy;
 use once_cell::unsync::OnceCell;
-use pango::{AttrColor, AttrList, Attribute, FontDescription, GlyphGeometry, GlyphInfo};
+use pango::{AttrColor, AttrList};
 use ropey::RopeSlice;
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell, RefMut};
-use std::cmp::{max, min};
-use std::collections::{hash_map, HashMap, HashSet};
-use std::rc::Rc;
+use std::cell::{Cell, RefCell};
+use std::cmp::{min};
+use std::collections::{HashSet};
+
 use std::time::Instant;
 
 const CURSOR_WIDTH: f64 = 2.0;
@@ -125,9 +125,9 @@ impl ObjectImpl for CodeViewTextPrivate {
         PROPERTIES.as_ref()
     }
 
-    fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {}
+    fn set_property(&self, _id: usize, _value: &glib::Value, _pspec: &glib::ParamSpec) {}
 
-    fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+    fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
         // debug!("get property {}", pspec.name());
         match pspec.name() {
             "hadjustment" => self.hadj.borrow().to_value(),
@@ -482,7 +482,7 @@ impl CodeViewTextPrivate {
         let button = gc.current_button();
         let event = gc.last_event(sequence.as_ref()).unwrap();
 
-        let shift = gc.current_event().map_or(false, |ev| {
+        let _shift = gc.current_event().map_or(false, |ev| {
             ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
         });
         let ctrl = gc.current_event().map_or(false, |ev| {

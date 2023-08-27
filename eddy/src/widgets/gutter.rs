@@ -1,22 +1,22 @@
 use crate::components::gutter::GutterComponent;
 use crate::theme::Theme;
-use eddy_workspace::style::{Attr, AttrSpan, Color};
+use eddy_workspace::style::{Color};
 use eddy_workspace::{Buffer, Workspace};
-use gdk::{Key, ModifierType};
+
 use gflux::ComponentCtx;
-use glib::{clone, Sender};
+use glib::{clone};
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, glib, graphene, Adjustment};
 use log::*;
-use lru_cache::LruCache;
+
 use once_cell::unsync::OnceCell;
-use pango::Attribute;
-use ropey::RopeSlice;
-use std::borrow::Cow;
+
+
+
 use std::cell::{Cell, RefCell};
-use std::cmp::{max, min};
+use std::cmp::{min};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
@@ -131,7 +131,7 @@ impl GutterPrivate {
     }
 
     fn buffer_changed(&self, gutter: &Gutter) {
-        let view_id = self.view_id.get();
+        let _view_id = self.view_id.get();
         let max_line_num = self.with_buffer(|b| b.len_lines());
         self.gutter_nchars.set(format!("{}", max_line_num).len());
 
@@ -142,7 +142,7 @@ impl GutterPrivate {
     fn handle_draw(&self, cv: &Gutter, snapshot: &gtk::Snapshot) {
         let draw_start = Instant::now();
 
-        let theme = &self.theme;
+        let _theme = &self.theme;
 
         let da_width = cv.allocated_width();
         let da_height = cv.allocated_height();

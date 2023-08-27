@@ -55,7 +55,7 @@ impl Layer for NilLayer {
     fn tree(&self) -> Option<&Tree> {
         None
     }
-    fn edit_tree(&mut self, start: Point, old_end: Point, new_end: Point) {}
+    fn edit_tree(&mut self, _start: Point, _old_end: Point, _new_end: Point) {}
 }
 
 pub fn print_tree(node: eddy_ts::Node, level: u32) {

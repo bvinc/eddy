@@ -1,12 +1,12 @@
 use crate::widgets::gutter::Gutter;
 
-use super::window::WindowComponent;
+
 use eddy_workspace::{ViewId, Workspace};
-use gflux::{Component, ComponentCtx, ComponentHandle};
-use glib::clone;
+use gflux::{Component, ComponentCtx};
+
 use gtk::prelude::*;
-use std::cell::RefCell;
-use std::rc::Rc;
+
+
 
 #[allow(dead_code)]
 pub struct GutterComponent {

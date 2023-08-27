@@ -144,7 +144,7 @@ impl Buffer {
             .push(Box::new(cb))
     }
 
-    fn scroll_to_selections(&mut self, view_id: ViewId) {
+    fn scroll_to_selections(&mut self, _view_id: ViewId) {
         self.event_sender
             .lock()
             .unwrap()
@@ -1131,7 +1131,7 @@ impl Buffer {
         };
 
         use std::collections::hash_map::Entry;
-        let mut sels = self.selections.entry(view_id).or_default();
+        let sels = self.selections.entry(view_id).or_default();
         sels.sels.clear();
         sels.sels.push(sel);
         sels.drag = Some(Drag {
@@ -1162,7 +1162,7 @@ impl Buffer {
         sel.end = line_end_char_idx;
 
         use std::collections::hash_map::Entry;
-        let mut sels = self.selections.entry(view_id).or_default();
+        let sels = self.selections.entry(view_id).or_default();
         sels.sels.clear();
         sels.sels.push(sel);
         sels.drag = Some(Drag {

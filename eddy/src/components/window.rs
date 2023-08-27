@@ -8,7 +8,7 @@ use crate::components::tab_label::TabLabelComponent;
 
 use super::code_view::CodeViewComponent;
 use super::dirbar::DirBarComponent;
-use super::tab_label;
+
 
 #[allow(dead_code)]
 pub struct WindowComponent {

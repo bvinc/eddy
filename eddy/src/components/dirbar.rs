@@ -1,14 +1,14 @@
-use super::window::WindowComponent;
+
 use anyhow::bail;
 use eddy_workspace::Workspace;
-use gflux::{Component, ComponentCtx, ComponentHandle};
+use gflux::{Component, ComponentCtx};
 use glib::{clone, Propagation};
 use gtk::prelude::*;
 use log::*;
-use std::cell::RefCell;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+
 
 #[allow(dead_code)]
 pub struct DirBarComponent {
@@ -41,7 +41,7 @@ impl Component for DirBarComponent {
         tree_view.append_column(&column0);
 
         tree_view.connect_test_expand_row(
-            clone!(@strong ctx, @strong tree_store => move |tv, ti, tp| {
+            clone!(@strong ctx, @strong tree_store => move |_tv, ti, tp| {
                 dbg!("handle_test_expand_row");
                 let dir = ctx.with_model(|ws| ws.dir.clone());
 
@@ -54,10 +54,10 @@ impl Component for DirBarComponent {
             }),
         );
 
-        tree_view.connect_test_collapse_row(|tv, ti, tp| Propagation::Proceed);
+        tree_view.connect_test_collapse_row(|_tv, _ti, _tp| Propagation::Proceed);
 
         tree_view.connect_row_activated(
-            clone!(@strong ctx, @strong tree_store => move |tv, tp, tvc| {
+            clone!(@strong ctx, @strong tree_store => move |tv, tp, _tvc| {
                 let dir = ctx.with_model(|ws| ws.dir.clone());
                 if let Some(ref ti) = tree_store.iter(&tp) {
                     if tree_store.iter_has_child(&ti) {
@@ -97,7 +97,7 @@ impl Component for DirBarComponent {
         }
     }
 
-    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {}
+    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {}
 }
 
 /// Given a path in the tree, clear it of its children, and re-read the

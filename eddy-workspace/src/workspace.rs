@@ -62,7 +62,7 @@ impl Workspace {
                 // let stdin = child.stdin.take().expect("stdin take");
 
                 let result_queue = ResultQueue::new();
-                let mut ls_client = lsp::start_new_server(
+                let ls_client = lsp::start_new_server(
                     "rust-analyzer".to_string(),
                     vec![],
                     vec!["rs".into()],
@@ -86,7 +86,7 @@ impl Workspace {
                 let document_text = buf.to_string();
                 ls_client.lock().expect("lock lsp").send_initialize(
                     Some(root_url),
-                    move |ls_client, res| {
+                    move |ls_client, _res| {
                         ls_client.is_initialized = true;
                         println!("sending init");
                         ls_client.send_initialized();

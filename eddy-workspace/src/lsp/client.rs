@@ -145,20 +145,20 @@ impl LanguageServerClient {
 
     fn remove_status_item(&mut self, id: &str) {
         self.status_items.remove(id);
-        for view_id in self.opened_documents.keys() {
+        for _view_id in self.opened_documents.keys() {
             // self.core.remove_status_item(*view_id, id);
         }
     }
 
-    fn add_status_item(&mut self, id: &str, value: &str, alignment: &str) {
+    fn add_status_item(&mut self, id: &str, _value: &str, _alignment: &str) {
         self.status_items.insert(id.to_string());
-        for view_id in self.opened_documents.keys() {
+        for _view_id in self.opened_documents.keys() {
             // self.core.add_status_item(*view_id, id, value, alignment);
         }
     }
 
-    fn update_status_item(&mut self, id: &str, value: &str) {
-        for view_id in self.opened_documents.keys() {
+    fn update_status_item(&mut self, _id: &str, _value: &str) {
+        for _view_id in self.opened_documents.keys() {
             // self.core.update_status_item(*view_id, id, value);
         }
     }
