@@ -13,7 +13,7 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub struct View {
     id: ViewID,
-    buffer: Rc<RefCell<Buffer>>,
+    buffer: Buffer,
     // pub selections: Vec<Selection>,
 }
 

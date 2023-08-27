@@ -1,7 +1,9 @@
+use crate::components::gutter::GutterComponent;
 use crate::theme::Theme;
 use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::Workspace;
+use eddy_workspace::{Buffer, Workspace};
 use gdk::{Key, ModifierType};
+use gflux::ComponentCtx;
 use glib::{clone, Sender};
 use gtk::glib::subclass;
 use gtk::prelude::*;
@@ -22,6 +24,7 @@ use std::time::Instant;
 pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
     workspace: OnceCell<Rc<RefCell<Workspace>>>,
+    ctx: OnceCell<ComponentCtx<GutterComponent>>,
     view_id: Cell<usize>,
     theme: Theme,
     gutter_nchars: Cell<usize>,
@@ -38,6 +41,7 @@ impl ObjectSubclass for GutterPrivate {
 
     fn new() -> Self {
         let workspace = OnceCell::new();
+        let ctx = OnceCell::new();
         let view_id = Cell::new(0);
         let theme = Theme::default();
         let vadj = RefCell::new(Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
@@ -46,6 +50,7 @@ impl ObjectSubclass for GutterPrivate {
         Self {
             vadj,
             workspace,
+            ctx,
             view_id,
             theme,
             gutter_nchars,
@@ -98,6 +103,26 @@ impl WidgetImpl for GutterPrivate {
 }
 
 impl GutterPrivate {
+    fn with_buffer<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&Buffer) -> R,
+    {
+        self.ctx
+            .get()
+            .unwrap()
+            .with_model(|ws| f(ws.buffer(self.view_id.get())))
+    }
+
+    fn with_buffer_mut<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&mut Buffer) -> R,
+    {
+        self.ctx
+            .get()
+            .unwrap()
+            .with_model_mut(|ws| f(ws.buffer_mut(self.view_id.get())))
+    }
+
     fn change_gutter_nchars(&mut self, obj: &Gutter, nchars: usize) {
         if nchars != self.gutter_nchars.get() {
             self.gutter_nchars.set(nchars);
@@ -106,10 +131,8 @@ impl GutterPrivate {
     }
 
     fn buffer_changed(&self, gutter: &Gutter) {
-        let workspace = self.workspace.get().unwrap().borrow_mut();
         let view_id = self.view_id.get();
-        let (buffer, _) = workspace.buffer_and_theme(view_id);
-        let max_line_num = buffer.borrow().len_lines();
+        let max_line_num = self.with_buffer(|b| b.len_lines());
         self.gutter_nchars.set(format!("{}", max_line_num).len());
 
         gutter.queue_draw();
@@ -124,12 +147,11 @@ impl GutterPrivate {
         let da_width = cv.allocated_width();
         let da_height = cv.allocated_height();
 
-        let workspace = self.workspace.get().unwrap().borrow_mut();
+        let text_theme = self.ctx.get().unwrap().with_model(|ws| ws.theme.clone());
         let view_id = self.view_id.get();
-        let (buffer, text_theme) = workspace.buffer_and_theme(view_id);
 
         // let (text_width, text_height) = self.get_text_size();
-        let num_lines = buffer.borrow().len_lines();
+        let num_lines = self.with_buffer(|b| b.len_lines());
 
         let vadj = self.vadj.borrow().clone();
 
@@ -167,8 +189,9 @@ impl GutterPrivate {
         // Figure out which of our lines need highlighting
         let mut highlighted_lines = self.highlighted_lines.borrow_mut();
         highlighted_lines.clear();
-        for sel in buffer.borrow().selections(view_id) {
-            let line = buffer.borrow().char_to_line(sel.cursor());
+        let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
+        for sel in selections {
+            let line = self.with_buffer(|b| b.char_to_line(sel.cursor()));
             if visible_lines.contains(&line) {
                 highlighted_lines.insert(line);
             }
@@ -295,11 +318,11 @@ glib::wrapper! {
 }
 
 impl Gutter {
-    pub fn new(workspace: Rc<RefCell<Workspace>>, view_id: usize) -> Self {
+    pub fn new(ctx: ComponentCtx<GutterComponent>, view_id: usize) -> Self {
         let gutter = glib::Object::new::<Self>();
         let gutter_priv = GutterPrivate::from_obj(&gutter);
 
-        let _ = gutter_priv.workspace.set(workspace);
+        let _ = gutter_priv.ctx.set(ctx);
         let _ = gutter_priv.view_id.set(view_id);
 
         gutter_priv.buffer_changed(&gutter);

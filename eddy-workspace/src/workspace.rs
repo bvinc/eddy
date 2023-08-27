@@ -6,7 +6,7 @@ use log::debug;
 use ropey::RopeSlice;
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
 use std::future::Future;
 use std::io;
@@ -20,10 +20,8 @@ pub type BufferId = usize;
 pub type ViewId = usize;
 
 pub struct Workspace {
-    next_view_id: ViewId,
-    next_buf_id: BufferId,
-    pub views: HashMap<ViewId, BufferId>,
-    buffers: HashMap<BufferId, Rc<RefCell<Buffer>>>,
+    pub views: BTreeMap<ViewId, BufferId>,
+    buffers: BTreeMap<BufferId, Buffer>,
     pub theme: Theme,
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
     event_sender: Arc<Mutex<EventSender>>,
@@ -33,10 +31,8 @@ pub struct Workspace {
 impl Workspace {
     pub fn new() -> Self {
         Self {
-            next_view_id: 0,
-            next_buf_id: 0,
-            views: HashMap::new(),
-            buffers: HashMap::new(),
+            views: BTreeMap::new(),
+            buffers: BTreeMap::new(),
             theme: Theme::new(),
             ls_client: None,
             event_sender: Arc::new(Mutex::new(EventSender::new())),
@@ -49,10 +45,8 @@ impl Workspace {
     }
 
     pub fn new_view(&mut self, path: Option<&Path>) -> Result<ViewId, io::Error> {
-        let view_id = self.next_view_id;
-        self.next_view_id += 1;
-        let buf_id = self.next_buf_id;
-        self.next_buf_id += 1;
+        let view_id = self.views.keys().max().copied().unwrap_or_default() + 1;
+        let buf_id = self.buffers.keys().max().copied().unwrap_or_default() + 1;
         self.views.insert(view_id, buf_id);
         dbg!("new view", view_id);
         let mut buffer = if let Some(path) = path {
@@ -112,7 +106,7 @@ impl Workspace {
             Buffer::new(buf_id, self.event_sender.clone())
         };
         buffer.init_view(view_id);
-        self.buffers.insert(buf_id, Rc::new(RefCell::new(buffer)));
+        self.buffers.insert(buf_id, buffer);
 
         self.event_sender
             .lock()
@@ -130,8 +124,7 @@ impl Workspace {
         self.buffers
             .get(&view_id)
             .and_then(|b| {
-                b.borrow()
-                    .path
+                b.path
                     .as_ref()
                     .and_then(|p| p.file_name())
                     .map(|p| p.to_string_lossy().to_string())
@@ -146,194 +139,177 @@ impl Workspace {
         }
     }
 
-    pub fn buffer(&self, view_id: usize) -> Rc<RefCell<Buffer>> {
+    pub fn buffer(&self, view_id: usize) -> &Buffer {
         self.buffers.get(&view_id).unwrap().clone()
     }
 
-    pub fn buffer_and_theme(&self, view_id: usize) -> (Rc<RefCell<Buffer>>, Theme) {
+    pub fn buffer_mut(&mut self, view_id: usize) -> &mut Buffer {
+        self.buffers.get_mut(&view_id).unwrap()
+    }
+
+    pub fn buffer_and_theme(&self, view_id: usize) -> (&Buffer, Theme) {
         (
             self.buffers.get(&view_id).unwrap().clone(),
             self.theme.clone(),
         )
     }
 
+    pub fn buffer_and_theme_mut(&mut self, view_id: usize) -> (&mut Buffer, Theme) {
+        (self.buffers.get_mut(&view_id).unwrap(), self.theme.clone())
+    }
+
     pub fn save(&mut self, view_id: usize) -> Result<(), anyhow::Error> {
-        self.buffer(view_id).borrow_mut().save()?;
+        self.buffer_mut(view_id).save()?;
 
         Ok(())
     }
 
     pub fn save_as(&mut self, view_id: usize, path: &Path) -> Result<(), anyhow::Error> {
         dbg!(path);
-        self.buffer(view_id).borrow_mut().save_as(path)?;
+        self.buffer_mut(view_id).save_as(path)?;
         Ok(())
     }
 
     pub fn insert(&mut self, view_id: ViewId, text: &str) {
-        self.buffer(view_id).borrow_mut().insert(view_id, text);
+        self.buffer_mut(view_id).insert(view_id, text);
     }
 
     pub fn insert_newline(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().insert_newline(view_id);
+        self.buffer_mut(view_id).insert_newline(view_id);
     }
 
     pub fn insert_tab(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().insert_tab(view_id);
+        self.buffer_mut(view_id).insert_tab(view_id);
     }
 
     pub fn delete_forward(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().delete_forward(view_id);
+        self.buffer_mut(view_id).delete_forward(view_id);
     }
 
     pub fn delete_backward(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().delete_backward(view_id);
+        self.buffer_mut(view_id).delete_backward(view_id);
     }
 
     pub fn move_left(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_left(view_id);
+        self.buffer_mut(view_id).move_left(view_id);
     }
 
     pub fn move_right(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_right(view_id);
+        self.buffer_mut(view_id).move_right(view_id);
     }
 
     pub fn move_up(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_up(view_id);
+        self.buffer_mut(view_id).move_up(view_id);
     }
     pub fn move_up_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_up_and_modify_selection(view_id);
     }
 
     pub fn move_down(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_down(view_id);
+        self.buffer_mut(view_id).move_down(view_id);
     }
 
     pub fn move_down_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_down_and_modify_selection(view_id);
     }
 
     pub fn move_word_left(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_word_left(view_id);
+        self.buffer_mut(view_id).move_word_left(view_id);
     }
     pub fn move_word_right(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().move_word_right(view_id);
+        self.buffer_mut(view_id).move_word_right(view_id);
     }
 
     pub fn move_left_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_left_and_modify_selection(view_id);
     }
 
     pub fn move_right_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_right_and_modify_selection(view_id);
     }
 
     pub fn move_word_left_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_word_left_and_modify_selection(view_id);
     }
     pub fn move_word_right_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_word_right_and_modify_selection(view_id);
     }
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
-            .move_to_left_end_of_line(view_id);
+        self.buffer_mut(view_id).move_to_left_end_of_line(view_id);
     }
     pub fn move_to_right_end_of_line(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
-            .move_to_right_end_of_line(view_id);
+        self.buffer_mut(view_id).move_to_right_end_of_line(view_id);
     }
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_to_left_end_of_line_and_modify_selection(view_id);
     }
     pub fn move_to_right_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_to_right_end_of_line_and_modify_selection(view_id);
     }
     pub fn move_to_beginning_of_document(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_to_beginning_of_document(view_id);
     }
 
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
-            .move_to_end_of_document(view_id);
+        self.buffer_mut(view_id).move_to_end_of_document(view_id);
     }
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_to_beginning_of_document_and_modify_selection(view_id);
     }
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .move_to_end_of_document_and_modify_selection(view_id);
     }
     pub fn page_down(&mut self, view_id: ViewId, lines_visible: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
-            .page_down(view_id, lines_visible);
+        self.buffer_mut(view_id).page_down(view_id, lines_visible);
     }
     pub fn page_up(&mut self, view_id: ViewId, lines_visible: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
-            .page_up(view_id, lines_visible);
+        self.buffer_mut(view_id).page_up(view_id, lines_visible);
     }
     pub fn page_up_and_modify_selection(&mut self, view_id: ViewId, lines_visible: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .page_up_and_modify_selection(view_id, lines_visible);
     }
     pub fn page_down_and_modify_selection(&mut self, view_id: ViewId, lines_visible: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .page_down_and_modify_selection(view_id, lines_visible);
     }
     pub fn select_all(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().select_all(view_id);
+        self.buffer_mut(view_id).select_all(view_id);
     }
     pub fn undo(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().undo(view_id);
+        self.buffer_mut(view_id).undo(view_id);
     }
     pub fn redo(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().redo(view_id);
+        self.buffer_mut(view_id).redo(view_id);
     }
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
-        self.buffer(view_id).borrow_mut().cut(view_id)
+        self.buffer_mut(view_id).cut(view_id)
     }
     pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
-        self.buffer(view_id).borrow_mut().copy(view_id)
+        self.buffer_mut(view_id).copy(view_id)
     }
     pub fn paste(&mut self, view_id: ViewId) {
-        self.buffer(view_id).borrow_mut().paste(view_id);
+        self.buffer_mut(view_id).paste(view_id);
     }
 
     pub fn gesture_point_select(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .gesture_point_select(view_id, line_idx, line_byte_idx);
     }
     pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
-        self.buffer(view_id)
-            .borrow_mut()
+        self.buffer_mut(view_id)
             .drag_update(view_id, line_idx, line_byte_idx);
     }
 }

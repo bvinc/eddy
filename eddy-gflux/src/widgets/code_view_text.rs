@@ -159,7 +159,7 @@ impl ObjectImpl for CodeViewTextPrivate {
         let gesture_click = gtk::GestureClick::new();
         gesture_click.connect_pressed(clone!(@strong obj as this => move |gc, n_press, x, y| {
             this.grab_focus();
-            let this_ = CodeViewTextPrivate::from_instance(&this);
+            let this_ = CodeViewTextPrivate::from_obj(&this);
             this_.button_pressed(&this, gc, n_press, x, y);
             // gc.set_state(gtk::EventSequenceState::Claimed);
         }));
@@ -183,7 +183,8 @@ impl ObjectImpl for CodeViewTextPrivate {
         let event_controller_key = gtk::EventControllerKey::new();
         event_controller_key.connect_key_pressed(
             clone!(@strong obj as this => move |_,key, code, state| {
-                this.key_pressed(key, code, state);
+                let this_ = CodeViewTextPrivate::from_obj(&this);
+                this_.key_pressed(key, code, state);
                 gtk::Inhibit(true)
             }),
         );
@@ -274,41 +275,61 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn get_buffer(&self) -> Rc<RefCell<Buffer>> {
+    fn with_buffer<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&Buffer) -> R,
+    {
         self.ctx
             .get()
             .unwrap()
-            .with_model(|ws| ws.buffer(self.view_id.get()))
+            .with_model(|ws| f(ws.buffer(self.view_id.get())))
     }
 
-    fn get_buffer_mut(&self) -> Rc<RefCell<Buffer>> {
-        println!("get buffer mut");
+    fn with_buffer_mut<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&mut Buffer) -> R,
+    {
         self.ctx
             .get()
             .unwrap()
-            .with_model_mut(|ws| ws.buffer(self.view_id.get()))
+            .with_model_mut(|ws| f(ws.buffer_mut(self.view_id.get())))
     }
 
-    fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
-        self.ctx
-            .get()
-            .unwrap()
-            .with_model(|ws| ws.buffer_and_theme(self.view_id.get()))
-    }
+    // fn get_buffer(&self) -> fRc<RefCell<Buffer>> {
+    //     self.ctx
+    //         .get()
+    //         .unwrap()
+    //         .with_model(|ws| ws.buffer(self.view_id.get()))
+    // }
 
-    fn get_buffer_and_theme_mut(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
-        println!("get buffer and theme mut");
-        self.ctx
-            .get()
-            .unwrap()
-            .with_model_mut(|ws| ws.buffer_and_theme(self.view_id.get()))
-    }
+    // fn get_buffer_mut(&self) -> Rc<RefCell<Buffer>> {
+    //     println!("get buffer mut");
+    //     self.ctx
+    //         .get()
+    //         .unwrap()
+    //         .with_model_mut(|ws| ws.buffer(self.view_id.get()))
+    // }
+
+    // fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
+    //     self.ctx
+    //         .get()
+    //         .unwrap()
+    //         .with_model(|ws| ws.buffer_and_theme(self.view_id.get()))
+    // }
+
+    // fn get_buffer_and_theme_mut(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
+    //     println!("get buffer and theme mut");
+    //     self.ctx
+    //         .get()
+    //         .unwrap()
+    //         .with_model_mut(|ws| ws.buffer_and_theme(self.view_id.get()))
+    // }
 
     fn reset_vadj_upper(&self, cvt: &CodeViewText) {
-        let buffer = self.get_buffer();
+        let len_lines = self.with_buffer(|b| b.len_lines());
 
         let font_height = self.font_metrics.borrow().font_height;
-        let text_height = buffer.borrow().len_lines() as f64 * font_height;
+        let text_height = len_lines as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
         self.set_adj_upper(&self.vadj, da_height as f64, text_height);
@@ -322,10 +343,9 @@ impl CodeViewTextPrivate {
     }
 
     fn scroll_to_carets(&self, cvt: &CodeViewText) {
-        let buffer = self.get_buffer();
+        let view_id = self.view_id.get();
         let font_height = self.font_metrics.borrow().font_height;
-        let buffer = buffer.borrow();
-        let selections = buffer.selections(self.view_id.get());
+        let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
 
         if selections.len() == 0 {
             return;
@@ -336,13 +356,14 @@ impl CodeViewTextPrivate {
         let mut min_y = None;
         let mut max_y = None;
         for sel in selections {
-            let line = buffer.char_to_line(sel.cursor());
+            let line = self.with_buffer(|b| b.char_to_line(sel.cursor()));
             let line_min_y = line as f64 * font_height;
             let line_max_y = line as f64 * font_height + font_height;
             min_y = Some(line_min_y.min(min_y.unwrap_or(line_min_y)));
             max_y = Some(line_max_y.max(max_y.unwrap_or(line_max_y)));
 
-            let line_byte = buffer.char_to_byte(sel.cursor()) - buffer.line_to_byte(line);
+            let line_byte = self.with_buffer(|b| b.char_to_byte(sel.cursor()))
+                - self.with_buffer(|b| b.line_to_byte(line));
             let layout_line = self.make_layout_line(cvt, line);
             let x = layout_line.index_to_x(line_byte) as f64 / pango::SCALE as f64;
             let cur_min_x = x;
@@ -378,57 +399,58 @@ impl CodeViewTextPrivate {
     }
 
     fn make_layout_line(&self, cvt: &CodeViewText, line_num: usize) -> LayoutLine {
-        let (buffer, text_theme) = self.get_buffer_and_theme();
-        let mut layout_line = LayoutLine::new();
+        let text_theme = self.ctx.get().unwrap().with_model(|ws| ws.theme.clone());
         // Keep track of the starting x position
-        if let Some((line, attrs)) =
-            buffer
-                .borrow()
-                .get_line_with_attributes(self.view_id.get(), line_num, &text_theme)
-        {
-            let text: Cow<str> = line.into();
 
-            let pango_attrs = self.create_pango_attr_list(&attrs);
-            let pango_ctx = cvt.pango_context();
+        self.with_buffer(|b| {
+            let mut layout_line = LayoutLine::new();
+            if let Some((line, attrs)) =
+                b.get_line_with_attributes(self.view_id.get(), line_num, &text_theme)
+            {
+                let text: Cow<str> = line.into();
 
-            // Itemize
-            let items = pango::itemize_with_base_dir(
-                &pango_ctx,
-                pango::Direction::Ltr,
-                &text,
-                0,
-                text.len() as i32,
-                &pango_attrs,
-                None,
-            );
+                let pango_attrs = self.create_pango_attr_list(&attrs);
+                let pango_ctx = cvt.pango_context();
 
-            // Loop through the items
-            let mut x_off = 0;
-            for item in items {
-                let mut glyphs = pango::GlyphString::new();
-                let item_text = unsafe {
-                    std::str::from_utf8_unchecked(
-                        &text.as_bytes()[item.offset() as usize
-                            ..item.offset() as usize + item.length() as usize],
-                    )
-                };
+                // Itemize
+                let items = pango::itemize_with_base_dir(
+                    &pango_ctx,
+                    pango::Direction::Ltr,
+                    &text,
+                    0,
+                    text.len() as i32,
+                    &pango_attrs,
+                    None,
+                );
 
-                pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
-                self.adjust_glyph_tabs(&text, &item, &mut glyphs);
-                let width = glyphs.width();
+                // Loop through the items
+                let mut x_off = 0;
+                for item in items {
+                    let mut glyphs = pango::GlyphString::new();
+                    let item_text = unsafe {
+                        std::str::from_utf8_unchecked(
+                            &text.as_bytes()[item.offset() as usize
+                                ..item.offset() as usize + item.length() as usize],
+                        )
+                    };
 
-                layout_line.push(LayoutItem {
-                    text: item_text.to_string(),
-                    inner: item,
-                    glyphs,
-                    x_off,
-                    width,
-                });
+                    pango::shape_full(item_text, None, item.analysis(), &mut glyphs);
+                    self.adjust_glyph_tabs(&text, &item, &mut glyphs);
+                    let width = glyphs.width();
 
-                x_off += width;
+                    layout_line.push(LayoutItem {
+                        text: item_text.to_string(),
+                        inner: item,
+                        glyphs,
+                        x_off,
+                        width,
+                    });
+
+                    x_off += width;
+                }
             }
-        }
-        layout_line
+            layout_line
+        })
     }
 
     fn xy_to_line_idx(&self, cvt: &CodeViewText, x: f64, y: f64) -> (usize, usize) {
@@ -454,6 +476,7 @@ impl CodeViewTextPrivate {
         x: f64,
         y: f64,
     ) {
+        let view_id = self.view_id.get();
         // dbg!(n_press);
         let sequence = gc.current_sequence(); // Can be None
         let button = gc.current_button();
@@ -475,51 +498,39 @@ impl CodeViewTextPrivate {
         } else if button == gdk::BUTTON_PRIMARY {
         }
 
-        let buffer = self.get_buffer_mut();
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
 
         match n_press {
             1 => {
                 if ctrl {
-                    let mut buffer = buffer.borrow_mut();
-                    buffer.gesture_toggle_sel(self.view_id.get(), line, idx);
+                    self.with_buffer_mut(|b| b.gesture_toggle_sel(view_id, line, idx));
                 } else {
-                    let mut buffer = buffer.borrow_mut();
-                    buffer.gesture_point_select(self.view_id.get(), line, idx);
+                    self.with_buffer_mut(|b| b.gesture_point_select(view_id, line, idx));
                 }
             }
 
             2 => {
-                let mut buffer = buffer.borrow_mut();
-                buffer.gesture_word_select(self.view_id.get(), line, idx);
+                self.with_buffer_mut(|b| b.gesture_word_select(view_id, line, idx));
             }
             3 => {
-                let mut buffer = buffer.borrow_mut();
-                buffer.gesture_line_select(self.view_id.get(), line);
+                self.with_buffer_mut(|b| b.gesture_line_select(view_id, line));
             }
             _ => {}
         };
     }
 
     fn gesture_toggle_sel(&self, cvt: &CodeViewText, x: f64, y: f64) {
-        let buffer = self.get_buffer_mut();
         let (line, byte_idx) = self.xy_to_line_idx(cvt, x, y);
-        buffer
-            .borrow_mut()
-            .gesture_toggle_sel(self.view_id.get(), line, byte_idx);
+        self.with_buffer_mut(|b| b.gesture_toggle_sel(self.view_id.get(), line, byte_idx));
     }
 
     fn gesture_drag(&self, cvt: &CodeViewText, x: f64, y: f64) {
-        let buffer = self.get_buffer_mut();
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
-        buffer
-            .borrow_mut()
-            .drag_update(self.view_id.get(), line, idx);
+        self.with_buffer_mut(|b| b.drag_update(self.view_id.get(), line, idx));
     }
 
     fn drag_end(&self, _cvt: &CodeViewText) {
-        let buffer = self.get_buffer_mut();
-        buffer.borrow_mut().drag_end(self.view_id.get());
+        self.with_buffer_mut(|b| b.drag_end(self.view_id.get()));
     }
 
     /// Determines how many lines page up or down should use
@@ -540,7 +551,7 @@ impl CodeViewTextPrivate {
         let da_height = cvt.allocated_height();
 
         let view_id = self.view_id.get();
-        let (buffer, text_theme) = self.get_buffer_and_theme();
+        let text_theme = self.ctx.get().unwrap().with_model(|ws| ws.theme.clone());
 
         //debug!("Drawing");
         // cr.select_font_face("Mono", ::cairo::enums::FontSlant::Normal, ::cairo::enums::FontWeight::Normal);
@@ -549,7 +560,7 @@ impl CodeViewTextPrivate {
         // font_options.set_hint_style(HintStyle::Full);
 
         // let (text_width, text_height) = self.get_text_size();
-        let num_lines = buffer.borrow().len_lines();
+        let num_lines = self.with_buffer(|b| b.len_lines());
 
         let vadj = self.vadj.clone();
         let hadj = self.hadj.clone();
@@ -586,8 +597,9 @@ impl CodeViewTextPrivate {
         // Figure out which of our lines need highlighting
         let mut highlighted_lines = self.highlighted_lines.borrow_mut();
         highlighted_lines.clear();
-        for sel in buffer.borrow().selections(view_id) {
-            let line = buffer.borrow().char_to_line(sel.cursor());
+        let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
+        for sel in selections {
+            let line = self.with_buffer(|b| b.char_to_line(sel.cursor()));
             if sel.is_caret() && visible_lines.contains(&line) {
                 highlighted_lines.insert(line);
             }
@@ -673,12 +685,13 @@ impl CodeViewTextPrivate {
             }
 
             // Draw the cursors on the line
-            for sel in buffer.borrow().selections(view_id) {
-                if buffer.borrow().char_to_line(sel.cursor()) != line_num {
+            let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
+            for sel in selections {
+                if self.with_buffer(|b| b.char_to_line(sel.cursor())) != line_num {
                     continue;
                 }
-                let line_byte = buffer.borrow().char_to_byte(sel.cursor())
-                    - buffer.borrow().line_to_byte(line_num);
+                let line_byte = self.with_buffer(|b| b.char_to_byte(sel.cursor()))
+                    - self.with_buffer(|b| b.line_to_byte(line_num));
                 let x = layout_line.index_to_x(line_byte) as f32 / pango::SCALE as f32;
 
                 let color = text_theme_to_gdk(text_theme.fg);
@@ -792,6 +805,142 @@ impl CodeViewTextPrivate {
                 .set_width((self.font_metrics.borrow().space_width * 4.0) as i32 * pango::SCALE);
         }
     }
+
+    fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
+        debug!(
+            "key press keyval={:?}, state={:?}, uc={:?}",
+            key,
+            state,
+            key.to_unicode(),
+        );
+
+        let view_id = self.view_id.get();
+        let ch = key.to_unicode();
+
+        let alt = state.contains(ModifierType::ALT_MASK);
+        let ctrl = state.contains(ModifierType::CONTROL_MASK);
+        let meta = state.contains(ModifierType::META_MASK);
+        let shift = state.contains(ModifierType::SHIFT_MASK);
+        let norm = !alt && !ctrl && !meta;
+
+        match key {
+            Key::Delete if norm => self.with_buffer_mut(|b| b.delete_forward(view_id)),
+            Key::BackSpace if norm => self.with_buffer_mut(|b| b.delete_backward(view_id)),
+            Key::Return | Key::KP_Enter => {
+                self.with_buffer_mut(|b| b.insert_newline(view_id));
+            }
+            Key::Tab if norm && !shift => self.with_buffer_mut(|b| b.insert_tab(view_id)),
+            Key::Up if norm && !shift => self.with_buffer_mut(|b| b.move_up(view_id)),
+            Key::Down if norm && !shift => self.with_buffer_mut(|b| b.move_down(view_id)),
+            Key::Left if norm && !shift => self.with_buffer_mut(|b| b.move_left(view_id)),
+            Key::Right if norm && !shift => self.with_buffer_mut(|b| b.move_right(view_id)),
+            Key::Up if norm && shift => {
+                self.with_buffer_mut(|b| b.move_up_and_modify_selection(view_id));
+            }
+            Key::Down if norm && shift => {
+                self.with_buffer_mut(|b| b.move_down_and_modify_selection(view_id));
+            }
+            Key::Left if norm && shift => {
+                self.with_buffer_mut(|b| b.move_left_and_modify_selection(view_id));
+            }
+            Key::Right if norm && shift => {
+                self.with_buffer_mut(|b| b.move_right_and_modify_selection(view_id));
+            }
+            Key::Left if ctrl && !shift => {
+                self.with_buffer_mut(|b| b.move_word_left(view_id));
+            }
+            Key::Right if ctrl && !shift => {
+                self.with_buffer_mut(|b| b.move_word_right(view_id));
+            }
+            Key::Left if ctrl && shift => {
+                self.with_buffer_mut(|b| b.move_word_left_and_modify_selection(view_id));
+            }
+            Key::Right if ctrl && shift => {
+                self.with_buffer_mut(|b| b.move_word_right_and_modify_selection(view_id));
+            }
+            Key::Home if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_to_left_end_of_line(view_id));
+            }
+            Key::End if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_to_right_end_of_line(view_id));
+            }
+            Key::Home if norm && shift => {
+                self.with_buffer_mut(|b| b.move_to_left_end_of_line_and_modify_selection(view_id));
+            }
+            Key::End if norm && shift => {
+                self.with_buffer_mut(|b| b.move_to_right_end_of_line_and_modify_selection(view_id));
+            }
+            Key::Home if ctrl && !shift => {
+                self.with_buffer_mut(|b| b.move_to_beginning_of_document(view_id));
+            }
+            Key::End if ctrl && !shift => {
+                self.with_buffer_mut(|b| b.move_to_end_of_document(view_id));
+            }
+            Key::Home if ctrl && shift => {
+                self.with_buffer_mut(|b| {
+                    b.move_to_beginning_of_document_and_modify_selection(view_id)
+                });
+            }
+            Key::End if ctrl && shift => {
+                self.with_buffer_mut(|b| b.move_to_end_of_document_and_modify_selection(view_id));
+            }
+            // Key::Page_Up if norm && !shift => {
+            //     self.with_buffer_mut(|b| b.page_up(view_id, self.page_lines(self)));
+            // }
+            // Key::Page_Down if norm && !shift => {
+            //     self.with_buffer_mut(|b| b.page_down(view_id, self_.page_lines(self)));
+            // }
+            // Key::Page_Up if norm && shift => {
+            //     self.with_buffer_mut(|b| {
+            //         b.page_up_and_modify_selection(view_id, self_.page_lines(self))
+            //     });
+            // }
+            // Key::Page_Down if norm && shift => {
+            //     self.with_buffer_mut(|b| {
+            //         b.page_down_and_modify_selection(view_id, self_.page_lines(self))
+            //     });
+            // }
+            _ => {
+                if let Some(ch) = ch {
+                    match ch {
+                        'a' if ctrl => {
+                            self.with_buffer_mut(|b| b.select_all(view_id));
+                        }
+                        'c' if ctrl => {
+                            // self.do_copy(state);
+                        }
+                        'f' if ctrl => {
+                            // self.start_search(state);
+                        }
+                        'v' if ctrl => {
+                            // self.do_paste(state);
+                        }
+                        's' if ctrl => {
+                            self.with_buffer_mut(|b| b.save());
+                        }
+                        't' if ctrl => {
+                            // TODO new tab
+                        }
+                        'x' if ctrl => {
+                            // self.do_cut(state);
+                        }
+                        'z' if ctrl => {
+                            self.with_buffer_mut(|b| b.undo(view_id));
+                        }
+                        'Z' if ctrl && shift => {
+                            self.with_buffer_mut(|b| b.redo(view_id));
+                        }
+                        c if (norm) && c >= '\u{0020}' => {
+                            self.with_buffer_mut(|b| b.insert(view_id, &c.to_string()));
+                        }
+                        _ => {
+                            debug!("unhandled key: {:?}", ch);
+                        }
+                    }
+                }
+            }
+        };
+    }
 }
 
 glib::wrapper! {
@@ -874,156 +1023,6 @@ impl CodeViewText {
     //     let (col, line) = { self.da_px_to_cell(&main_state, x, y) };
     //     self.do_paste_primary(&self.view_id, line, col);
     // }
-
-    fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
-        let self_ = CodeViewTextPrivate::from_obj(self);
-        debug!(
-            "key press keyval={:?}, state={:?}, uc={:?}",
-            key,
-            state,
-            key.to_unicode(),
-        );
-        let (buffer, _) = self_.get_buffer_and_theme_mut();
-
-        let view_id = self_.view_id.get();
-        let ch = key.to_unicode();
-
-        let alt = state.contains(ModifierType::ALT_MASK);
-        let ctrl = state.contains(ModifierType::CONTROL_MASK);
-        let meta = state.contains(ModifierType::META_MASK);
-        let shift = state.contains(ModifierType::SHIFT_MASK);
-        let norm = !alt && !ctrl && !meta;
-
-        match key {
-            Key::Delete if norm => buffer.borrow_mut().delete_forward(view_id),
-            Key::BackSpace if norm => buffer.borrow_mut().delete_backward(view_id),
-            Key::Return | Key::KP_Enter => {
-                buffer.borrow_mut().insert_newline(view_id);
-            }
-            Key::Tab if norm && !shift => buffer.borrow_mut().insert_tab(view_id),
-            Key::Up if norm && !shift => buffer.borrow_mut().move_up(view_id),
-            Key::Down if norm && !shift => buffer.borrow_mut().move_down(view_id),
-            Key::Left if norm && !shift => buffer.borrow_mut().move_left(view_id),
-            Key::Right if norm && !shift => buffer.borrow_mut().move_right(view_id),
-            Key::Up if norm && shift => {
-                buffer.borrow_mut().move_up_and_modify_selection(view_id);
-            }
-            Key::Down if norm && shift => {
-                buffer.borrow_mut().move_down_and_modify_selection(view_id);
-            }
-            Key::Left if norm && shift => {
-                buffer.borrow_mut().move_left_and_modify_selection(view_id);
-            }
-            Key::Right if norm && shift => {
-                buffer.borrow_mut().move_right_and_modify_selection(view_id);
-            }
-            Key::Left if ctrl && !shift => {
-                buffer.borrow_mut().move_word_left(view_id);
-            }
-            Key::Right if ctrl && !shift => {
-                buffer.borrow_mut().move_word_right(view_id);
-            }
-            Key::Left if ctrl && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_word_left_and_modify_selection(view_id);
-            }
-            Key::Right if ctrl && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_word_right_and_modify_selection(view_id);
-            }
-            Key::Home if norm && !shift => {
-                buffer.borrow_mut().move_to_left_end_of_line(view_id);
-            }
-            Key::End if norm && !shift => {
-                buffer.borrow_mut().move_to_right_end_of_line(view_id);
-            }
-            Key::Home if norm && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_to_left_end_of_line_and_modify_selection(view_id);
-            }
-            Key::End if norm && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_to_right_end_of_line_and_modify_selection(view_id);
-            }
-            Key::Home if ctrl && !shift => {
-                buffer.borrow_mut().move_to_beginning_of_document(view_id);
-            }
-            Key::End if ctrl && !shift => {
-                buffer.borrow_mut().move_to_end_of_document(view_id);
-            }
-            Key::Home if ctrl && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_to_beginning_of_document_and_modify_selection(view_id);
-            }
-            Key::End if ctrl && shift => {
-                buffer
-                    .borrow_mut()
-                    .move_to_end_of_document_and_modify_selection(view_id);
-            }
-            Key::Page_Up if norm && !shift => {
-                buffer.borrow_mut().page_up(view_id, self_.page_lines(self));
-            }
-            Key::Page_Down if norm && !shift => {
-                buffer
-                    .borrow_mut()
-                    .page_down(view_id, self_.page_lines(self));
-            }
-            Key::Page_Up if norm && shift => {
-                buffer
-                    .borrow_mut()
-                    .page_up_and_modify_selection(view_id, self_.page_lines(self));
-            }
-            Key::Page_Down if norm && shift => {
-                buffer
-                    .borrow_mut()
-                    .page_down_and_modify_selection(view_id, self_.page_lines(self));
-            }
-            _ => {
-                if let Some(ch) = ch {
-                    match ch {
-                        'a' if ctrl => {
-                            buffer.borrow_mut().select_all(view_id);
-                        }
-                        'c' if ctrl => {
-                            // self.do_copy(state);
-                        }
-                        'f' if ctrl => {
-                            // self.start_search(state);
-                        }
-                        'v' if ctrl => {
-                            // self.do_paste(state);
-                        }
-                        's' if ctrl => {
-                            buffer.borrow_mut().save();
-                        }
-                        't' if ctrl => {
-                            // TODO new tab
-                        }
-                        'x' if ctrl => {
-                            // self.do_cut(state);
-                        }
-                        'z' if ctrl => {
-                            buffer.borrow_mut().undo(view_id);
-                        }
-                        'Z' if ctrl && shift => {
-                            buffer.borrow_mut().redo(view_id);
-                        }
-                        c if (norm) && c >= '\u{0020}' => {
-                            buffer.borrow_mut().insert(view_id, &c.to_string());
-                        }
-                        _ => {
-                            debug!("unhandled key: {:?}", ch);
-                        }
-                    }
-                }
-            }
-        };
-    }
 }
 
 fn append_clipped_node<P: AsRef<gtk::gsk::RenderNode>>(

@@ -37,7 +37,7 @@ impl Component for CodeViewComponent {
         // cvt.set_hadjust(&hadj); TODO
         // cvt.set_vadjust(&vadj); TODO
 
-        let gutter: ComponentHandle<GutterComponent> = ctx.create_child(|ws| ws, ());
+        let gutter: ComponentHandle<GutterComponent> = ctx.create_child(|ws| ws, view_id);
         // gutter.set_vadjust(&vadj); TODO
 
         let scrolled_window = gtk::ScrolledWindow::builder()
@@ -58,5 +58,6 @@ impl Component for CodeViewComponent {
 
     fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {
         println!("cv rebuild");
+        self.gutter.rebuild();
     }
 }

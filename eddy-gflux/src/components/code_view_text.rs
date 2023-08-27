@@ -35,7 +35,6 @@ impl Component for CodeViewTextComponent {
     }
 
     fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {
-        println!("redraw");
         self.cvt.queue_draw();
     }
 }
