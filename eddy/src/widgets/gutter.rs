@@ -1,10 +1,10 @@
 use crate::components::gutter::GutterComponent;
 use crate::theme::Theme;
-use eddy_workspace::style::{Color};
-use eddy_workspace::{Buffer, Workspace};
+use eddy_workspace::style::Color;
+use eddy_workspace::Buffer;
 
 use gflux::ComponentCtx;
-use glib::{clone};
+use glib::clone;
 use gtk::glib::subclass;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -13,17 +13,13 @@ use log::*;
 
 use once_cell::unsync::OnceCell;
 
-
-
 use std::cell::{Cell, RefCell};
-use std::cmp::{min};
+use std::cmp::min;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::time::Instant;
 
 pub struct GutterPrivate {
     vadj: RefCell<Adjustment>,
-    workspace: OnceCell<Rc<RefCell<Workspace>>>,
     ctx: OnceCell<ComponentCtx<GutterComponent>>,
     view_id: Cell<usize>,
     theme: Theme,
@@ -40,7 +36,6 @@ impl ObjectSubclass for GutterPrivate {
     type Class = subclass::basic::ClassStruct<Self>;
 
     fn new() -> Self {
-        let workspace = OnceCell::new();
         let ctx = OnceCell::new();
         let view_id = Cell::new(0);
         let theme = Theme::default();
@@ -49,7 +44,6 @@ impl ObjectSubclass for GutterPrivate {
 
         Self {
             vadj,
-            workspace,
             ctx,
             view_id,
             theme,
@@ -323,7 +317,7 @@ impl Gutter {
         let gutter_priv = GutterPrivate::from_obj(&gutter);
 
         let _ = gutter_priv.ctx.set(ctx);
-        let _ = gutter_priv.view_id.set(view_id);
+        gutter_priv.view_id.set(view_id);
 
         gutter_priv.buffer_changed(&gutter);
 
@@ -339,11 +333,6 @@ impl Gutter {
             .connect_value_changed(clone!(@weak self as gutter => move |_| {
                 gutter.queue_draw();
             }));
-    }
-
-    pub fn buffer_changed(&self) {
-        let code_view_priv = GutterPrivate::from_obj(self);
-        code_view_priv.buffer_changed(self);
     }
 }
 

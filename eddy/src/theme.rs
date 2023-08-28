@@ -1,5 +1,3 @@
-use cairo;
-
 #[derive(Clone, Copy, Debug)]
 pub struct Color {
     r: u8,

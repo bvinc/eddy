@@ -1,4 +1,3 @@
-
 use anyhow::bail;
 use eddy_workspace::Workspace;
 use gflux::{Component, ComponentCtx};
@@ -8,7 +7,6 @@ use log::*;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-
 
 #[allow(dead_code)]
 pub struct DirBarComponent {
@@ -45,7 +43,7 @@ impl Component for DirBarComponent {
                 dbg!("handle_test_expand_row");
                 let dir = ctx.with_model(|ws| ws.dir.clone());
 
-                if let Ok(path) = tree_path_to_path(Some(&dir), &tree_store, &tp) {
+                if let Ok(path) = tree_path_to_path(Some(&dir), &tree_store, tp) {
                     if let Err(e) = refresh_dir(&tree_store, Some(ti), &path) {
                         warn!("{}", e);
                     }
@@ -59,12 +57,12 @@ impl Component for DirBarComponent {
         tree_view.connect_row_activated(
             clone!(@strong ctx, @strong tree_store => move |tv, tp, _tvc| {
                 let dir = ctx.with_model(|ws| ws.dir.clone());
-                if let Some(ref ti) = tree_store.iter(&tp) {
-                    if tree_store.iter_has_child(&ti) {
-                        if !tv.row_expanded(&tp) {
-                            tv.expand_row(&tp, false);
+                if let Some(ref ti) = tree_store.iter(tp) {
+                    if tree_store.iter_has_child(ti) {
+                        if !tv.row_expanded(tp) {
+                            tv.expand_row(tp, false);
                         } else {
-                            tv.collapse_row(&tp);
+                            tv.collapse_row(tp);
                         }
                         return;
                     }
@@ -72,7 +70,7 @@ impl Component for DirBarComponent {
                     dbg!("invalid path");
                     return;
                 }
-                match tree_path_to_path(Some(&dir), &tree_store, &tp) {
+                match tree_path_to_path(Some(&dir), &tree_store, tp) {
                     Ok(path) => {
                         if let Ok(path) = path.canonicalize() {
                             dbg!(&path);
@@ -109,7 +107,7 @@ pub fn refresh_dir(
 ) -> Result<(), anyhow::Error> {
     dbg!("refresh_dir");
     dbg!("clearing children");
-    clear_tree_iter_children(&tree_store, ti);
+    clear_tree_iter_children(tree_store, ti);
 
     let mut files = vec![];
     dbg!(&path);
@@ -167,7 +165,5 @@ pub fn clear_tree_iter_children(tree_store: &gtk::TreeStore, ti: Option<&gtk::Tr
     if let Some(ref mut p) = pi {
         dbg!("starting remove");
         while tree_store.remove(p) {}
-
-        return;
     }
 }
