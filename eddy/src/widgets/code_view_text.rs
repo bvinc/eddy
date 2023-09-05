@@ -20,8 +20,8 @@ use pango::{AttrColor, AttrList};
 use ropey::RopeSlice;
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::cmp::{min};
-use std::collections::{HashSet};
+use std::cmp::min;
+use std::collections::HashSet;
 
 use std::time::Instant;
 
@@ -190,32 +190,32 @@ impl ObjectImpl for CodeViewTextPrivate {
         );
         obj.add_controller(event_controller_key);
 
-        // let event_controller_scroll = gtk::EventControllerScroll::builder()
-        //     // .flags(
-        //     //     gtk::EventControllerScrollFlags::BOTH_AXES
-        //     //         | gtk::EventControllerScrollFlags::KINETIC,
-        //     // )
-        //     // .name("codeviewtext")
-        //     // .propagation_limit(gtk::PropagationLimit::SameNative)
-        //     // .propagation_phase(gtk::PropagationPhase::Target)
-        //     .build();
-        // // event_controller_scroll.connect_decelerate(clone!(@strong obj as this => move |_,a,b| {
-        // //     dbg!("connect_decelerate", a, b);
-        // // }));
-        // // event_controller_scroll.connect_scroll(clone!(@strong obj as this => move |_,a,b| {
-        // //     dbg!("connect_scroll", a, b);
-        // //     gtk::Inhibit(true)
-        // // }));
-        // // event_controller_scroll.connect_scroll_begin(clone!(@strong obj as this => move |_| {
-        // //     dbg!("connect_scroll");
-        // // }));
-        // // event_controller_scroll.connect_scroll_end(clone!(@strong obj as this => move |_| {
-        // //     dbg!("connect_scroll_end");
-        // // }));
-        // // event_controller_scroll.connect_flags_notify(clone!(@strong obj as this => move |_| {
-        // //     dbg!("connect_flags_notify");
-        // // }));
-        // obj.add_controller(&event_controller_scroll);
+        let event_controller_scroll = gtk::EventControllerScroll::builder()
+            // .flags(
+            //     gtk::EventControllerScrollFlags::BOTH_AXES
+            //         | gtk::EventControllerScrollFlags::KINETIC,
+            // )
+            // .name("codeviewtext")
+            // .propagation_limit(gtk::PropagationLimit::SameNative)
+            // .propagation_phase(gtk::PropagationPhase::Target)
+            .build();
+        // event_controller_scroll.connect_decelerate(clone!(@strong obj as this => move |_,a,b| {
+        //     dbg!("connect_decelerate", a, b);
+        // }));
+        // event_controller_scroll.connect_scroll(clone!(@strong obj as this => move |_,a,b| {
+        //     dbg!("connect_scroll", a, b);
+        //     gtk::Inhibit(true)
+        // }));
+        // event_controller_scroll.connect_scroll_begin(clone!(@strong obj as this => move |_| {
+        //     dbg!("connect_scroll");
+        // }));
+        // event_controller_scroll.connect_scroll_end(clone!(@strong obj as this => move |_| {
+        //     dbg!("connect_scroll_end");
+        // }));
+        // event_controller_scroll.connect_flags_notify(clone!(@strong obj as this => move |_| {
+        //     dbg!("connect_flags_notify");
+        // }));
+        obj.add_controller(event_controller_scroll);
     }
 }
 impl WidgetImpl for CodeViewTextPrivate {
@@ -491,12 +491,12 @@ impl CodeViewTextPrivate {
         });
         // dbg!(ctrl);
 
-        if n_press == 1 && event.triggers_context_menu() {
-            // TODO context menu?
-        } else if button == gdk::BUTTON_MIDDLE {
-            // TODO middle click paste
-        } else if button == gdk::BUTTON_PRIMARY {
-        }
+        // if n_press == 1 && event.triggers_context_menu() {
+        //     // TODO context menu?
+        // } else if button == gdk::BUTTON_MIDDLE {
+        //     // TODO middle click paste
+        // } else if button == gdk::BUTTON_PRIMARY {
+        // }
 
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
 

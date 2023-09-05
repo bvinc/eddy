@@ -1,5 +1,3 @@
-
-
 use super::code_view_text::CodeViewTextComponent;
 use super::gutter::GutterComponent;
 
@@ -7,8 +5,6 @@ use eddy_workspace::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx, ComponentHandle};
 
 use gtk::prelude::*;
-
-
 
 #[allow(dead_code)]
 pub struct CodeViewComponent {
@@ -34,11 +30,11 @@ impl Component for CodeViewComponent {
 
         let cvt: ComponentHandle<CodeViewTextComponent> = ctx.create_child(|ws| ws, view_id);
         // let cvt = CodeViewText::new();
-        // cvt.set_hadjust(&hadj); TODO
-        // cvt.set_vadjust(&vadj); TODO
+        cvt.widget().set_hadjust(&hadj);
+        cvt.widget().set_vadjust(&vadj);
 
         let gutter: ComponentHandle<GutterComponent> = ctx.create_child(|ws| ws, view_id);
-        // gutter.set_vadjust(&vadj); TODO
+        gutter.widget().set_vadjust(&vadj); // TODO
 
         let scrolled_window = gtk::ScrolledWindow::builder()
             .hadjustment(&hadj)

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+#![warn(missing_debug_implementations, rust_2018_idioms)]
 
 mod buffer;
 pub(crate) mod graphemes;

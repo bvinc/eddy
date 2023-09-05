@@ -19,6 +19,7 @@ use url::Url;
 pub type BufferId = usize;
 pub type ViewId = usize;
 
+#[derive(Debug)]
 pub struct Workspace {
     pub views: BTreeMap<ViewId, BufferId>,
     buffers: BTreeMap<BufferId, Buffer>,

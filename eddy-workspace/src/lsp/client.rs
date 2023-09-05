@@ -24,7 +24,7 @@ use lsp_types::*;
 use serde_json::{to_value, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::process;
+use std::{fmt, process};
 use url::Url;
 
 /// A type to abstract communication with the language server
@@ -40,6 +40,21 @@ pub struct LanguageServerClient {
     pub opened_documents: HashMap<ViewId, Url>,
     pub server_capabilities: Option<ServerCapabilities>,
     pub file_extensions: Vec<String>,
+}
+
+impl fmt::Debug for LanguageServerClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LanguageServerClient")
+            .field("next_id", &self.next_id)
+            .field("language_id", &self.language_id)
+            .field("result_queue", &self.result_queue)
+            .field("status_items", &self.status_items)
+            .field("is_initialized", &self.is_initialized)
+            .field("opened_documents", &self.opened_documents)
+            .field("server_capabilities", &self.server_capabilities)
+            .field("file_extensions", &self.file_extensions)
+            .finish()
+    }
 }
 
 /// Prepare Language Server Protocol style JSON String from

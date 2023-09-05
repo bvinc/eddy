@@ -1,7 +1,7 @@
 use eddy_workspace::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx};
 use glib::clone;
-use gtk::prelude::*;
+use gtk::{prelude::*, Orientation};
 
 #[allow(dead_code)]
 pub struct TabLabelComponent {
@@ -29,7 +29,7 @@ impl Component for TabLabelComponent {
             ctx.with_model(|ws| ws.close_view(view_id));
         }));
 
-        let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let hbox = gtk::Box::new(Orientation::Horizontal, 8);
         hbox.append(&label);
         hbox.append(&button);
 

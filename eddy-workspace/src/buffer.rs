@@ -21,13 +21,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-// #[derive(Debug)]
 pub struct Buffer {
     pub id: BufferId,
     pub path: Option<PathBuf>,
     pristine: bool,
-    // history_ix: usize,
-    // history: Vec<Rope>,
     rope: Rope,
     history: History,
     selections: HashMap<ViewId, Selections>,
@@ -38,6 +35,22 @@ pub struct Buffer {
     text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
     scroll_to_selections_cbs: HashMap<ViewId, Vec<Box<dyn Fn() + 'static>>>,
     event_sender: Arc<Mutex<EventSender>>,
+}
+
+impl fmt::Debug for Buffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Buffer")
+            .field("id", &self.id)
+            .field("path", &self.path)
+            .field("pristine", &self.pristine)
+            .field("rope", &self.rope)
+            .field("history", &self.history)
+            .field("selections", &self.selections)
+            .field("line_ending", &self.line_ending)
+            .field("tab_mode", &self.tab_mode)
+            .field("tab_size", &self.tab_size)
+            .finish()
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
