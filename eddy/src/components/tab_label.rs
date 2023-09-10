@@ -5,7 +5,9 @@ use gtk::{prelude::*, Orientation};
 
 #[allow(dead_code)]
 pub struct TabLabelComponent {
+    view_id: ViewId,
     hbox: gtk::Box,
+    label: gtk::Label,
 }
 
 impl Component for TabLabelComponent {
@@ -19,9 +21,7 @@ impl Component for TabLabelComponent {
     }
 
     fn build(ctx: ComponentCtx<Self>, view_id: ViewId) -> Self {
-        let name = ctx.with_model(|ws| ws.display_name(view_id));
-
-        let label = gtk::Label::new(Some(&name));
+        let label = gtk::Label::new(None);
 
         let button = gtk::Button::new();
         button.set_icon_name("window-close");
@@ -33,8 +33,19 @@ impl Component for TabLabelComponent {
         hbox.append(&label);
         hbox.append(&button);
 
-        Self { hbox }
+        Self {
+            view_id,
+            hbox,
+            label,
+        }
     }
 
-    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {}
+    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
+        let view_id = self.view_id;
+        let name = ctx.with_model(|ws| ws.display_name(view_id));
+        let pristine = ctx.with_model(|ws| ws.buffer(view_id).pristine);
+        let name = format!("{}{}", if pristine { "" } else { "*" }, name);
+
+        self.label.set_text(&name);
+    }
 }

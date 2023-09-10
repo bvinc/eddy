@@ -1,5 +1,10 @@
+* up/down doesn't work
+* pgup pgdn doesn't work
+* Save as
+
 * up and down don't save horizontal in a graphically correct way
   - doesn't even work with non-fixed width fonts
+
 
 * Investigate if the sender should be inside the workspace
 * Have an icon for files that need saving

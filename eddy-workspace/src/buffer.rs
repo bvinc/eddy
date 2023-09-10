@@ -6,7 +6,7 @@ use crate::language::{self, Layer, NilLayer};
 use crate::line_ending::LineEnding;
 use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
-use crate::{BufferId, BufferUpdate, Event, EventSender, Point, Range, Selection, ViewId};
+use crate::{BufferId, Point, Range, Selection, ViewId};
 use anyhow::bail;
 use log::*;
 use ropey::{Rope, RopeSlice};
@@ -24,7 +24,7 @@ use std::time::Instant;
 pub struct Buffer {
     pub id: BufferId,
     pub path: Option<PathBuf>,
-    pristine: bool,
+    pub pristine: bool,
     rope: Rope,
     history: History,
     selections: HashMap<ViewId, Selections>,
@@ -33,8 +33,6 @@ pub struct Buffer {
     tab_mode: TabMode,
     tab_size: usize,
     text_change_cbs: Vec<Box<dyn Fn() + 'static>>,
-    scroll_to_selections_cbs: HashMap<ViewId, Vec<Box<dyn Fn() + 'static>>>,
-    event_sender: Arc<Mutex<EventSender>>,
 }
 
 impl fmt::Debug for Buffer {
@@ -92,7 +90,7 @@ impl Selections {
 }
 
 impl Buffer {
-    pub fn new(id: BufferId, event_sender: Arc<Mutex<EventSender>>) -> Self {
+    pub fn new(id: BufferId) -> Self {
         let rope = Rope::new();
         Self {
             id,
@@ -106,15 +104,9 @@ impl Buffer {
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
             text_change_cbs: Vec::new(),
-            scroll_to_selections_cbs: HashMap::new(),
-            event_sender,
         }
     }
-    pub fn from_file(
-        id: BufferId,
-        path: &Path,
-        event_sender: Arc<Mutex<EventSender>>,
-    ) -> Result<Self, io::Error> {
+    pub fn from_file(id: BufferId, path: &Path) -> Result<Self, io::Error> {
         let rope = Rope::from_reader(BufReader::new(File::open(path)?))?;
 
         let mut buffer = Buffer {
@@ -129,8 +121,6 @@ impl Buffer {
             tab_mode: TabMode::Spaces(4),
             tab_size: 8,
             text_change_cbs: Vec::new(),
-            scroll_to_selections_cbs: HashMap::new(),
-            event_sender,
         };
         buffer.on_text_change();
         Ok(buffer)
@@ -148,20 +138,6 @@ impl Buffer {
     /// Subscribe to buffer updates.  Whenever this buffer changes, call `cb`.
     pub fn connect_update<F: Fn() + 'static>(&mut self, cb: F) {
         self.text_change_cbs.push(Box::new(cb))
-    }
-
-    pub fn connect_scroll_to_selections<F: Fn() + 'static>(&mut self, view_id: ViewId, cb: F) {
-        self.scroll_to_selections_cbs
-            .entry(view_id)
-            .or_insert(Vec::new())
-            .push(Box::new(cb))
-    }
-
-    fn scroll_to_selections(&mut self, _view_id: ViewId) {
-        self.event_sender
-            .lock()
-            .unwrap()
-            .send(Event::ScrollToCarets { buffer_id: self.id });
     }
 
     /// Converts char index (code points) into a byte index, the line, and the
@@ -182,26 +158,10 @@ impl Buffer {
         let start = Instant::now();
         self.layer.update_highlights(&self.rope);
         debug!("update_highlights took {}ms", start.elapsed().as_millis());
-
-        self.event_sender
-            .lock()
-            .unwrap()
-            .send(Event::BufferChange { buffer_id: self.id });
-    }
-
-    fn on_selection_change(&mut self) {
-        self.event_sender
-            .lock()
-            .unwrap()
-            .send(Event::BufferChange { buffer_id: self.id });
     }
 
     fn set_pristine(&mut self, pristine: bool) {
         if self.pristine != pristine {
-            self.event_sender
-                .lock()
-                .unwrap()
-                .send(Event::BufferUpdate(BufferUpdate::PristineChanged(self.id)));
             self.pristine = pristine
         }
     }
@@ -291,7 +251,6 @@ impl Buffer {
             .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Insert a newline at every selection point of a view
@@ -331,7 +290,6 @@ impl Buffer {
             .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Delete the character before the cursor, or the highlighted region.  This
@@ -360,7 +318,6 @@ impl Buffer {
             .new_change(&self.rope, sels_before.sels, sels_after.sels);
 
         self.on_text_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor to the left, or collapse selection region to the left
@@ -383,9 +340,6 @@ impl Buffer {
                 sel.end = left;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor to the right, or collapse selection region to the right
@@ -409,9 +363,6 @@ impl Buffer {
                 sel.end = right;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -505,9 +456,6 @@ impl Buffer {
             sel.start = final_char;
             sel.end = final_char;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor up while modifying the selection region
@@ -518,9 +466,6 @@ impl Buffer {
             sel.horiz = horiz;
             sel.end = final_char;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, and a saved horizontal offset, return a new
@@ -623,9 +568,6 @@ impl Buffer {
             sel.start = final_char;
             sel.end = final_char;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor down while modifying the selection region
@@ -636,9 +578,6 @@ impl Buffer {
             sel.horiz = horiz;
             sel.end = final_char;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Given a character location, return a new character location to the next
@@ -729,9 +668,6 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
     /// move the cursor to the right to the next word boundry
     pub fn move_word_right(&mut self, view_id: ViewId) {
@@ -743,9 +679,6 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Move the cursor left while modifying the selection region
@@ -759,8 +692,6 @@ impl Buffer {
                 sel.horiz = None;
             }
         }
-
-        self.on_selection_change();
     }
 
     /// Move the cursor right while modifying the selection region
@@ -775,9 +706,6 @@ impl Buffer {
                 sel.horiz = None;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// move the cursor to the left to the next word boundry while modifying
@@ -790,9 +718,6 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// move the cursor to the right to the next word boundry while modifying
@@ -805,9 +730,6 @@ impl Buffer {
             sel.end = word_right;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_left_end_of_line(&mut self, view_id: ViewId) {
@@ -819,9 +741,6 @@ impl Buffer {
             sel.end = line_home;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_right_end_of_line(&mut self, view_id: ViewId) {
@@ -842,9 +761,6 @@ impl Buffer {
             sel.end = line_end;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_left_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -856,9 +772,6 @@ impl Buffer {
             sel.end = line_home;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_right_end_of_line_and_modify_selection(&mut self, view_id: ViewId) {
@@ -877,9 +790,6 @@ impl Buffer {
             sel.end = line_end;
             sel.horiz = None;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_beginning_of_document(&mut self, view_id: ViewId) {
@@ -887,9 +797,6 @@ impl Buffer {
             sel.start = 0;
             sel.end = 0;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_end_of_document(&mut self, view_id: ViewId) {
@@ -900,18 +807,12 @@ impl Buffer {
             sel.start = end_of_doc;
             sel.end = end_of_doc;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_beginning_of_document_and_modify_selection(&mut self, view_id: ViewId) {
         for sel in &mut self.selections.entry(view_id).or_default().sels {
             sel.end = 0;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn move_to_end_of_document_and_modify_selection(&mut self, view_id: ViewId) {
@@ -921,9 +822,6 @@ impl Buffer {
             let end_of_doc = rope.len_chars();
             sel.end = end_of_doc;
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn page_up(&mut self, view_id: ViewId, lines: usize) {
@@ -936,9 +834,6 @@ impl Buffer {
                 sel.end = final_char;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn page_up_and_modify_selection(&mut self, view_id: ViewId, lines: usize) {
@@ -950,9 +845,6 @@ impl Buffer {
                 sel.end = final_char;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn page_down(&mut self, view_id: ViewId, lines: usize) {
@@ -965,9 +857,6 @@ impl Buffer {
                 sel.end = final_char;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn page_down_and_modify_selection(&mut self, view_id: ViewId, lines: usize) {
@@ -979,9 +868,6 @@ impl Buffer {
                 sel.end = final_char;
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user clicks
@@ -1006,9 +892,6 @@ impl Buffer {
             sel_idx: 0,
             anchor: sel,
         });
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user shift-clicks
@@ -1035,9 +918,6 @@ impl Buffer {
         let sels = self.selections.entry(view_id).or_default();
         sels.sels.clear();
         sels.sels.push(sel);
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user ctrl-clicks.  If a selection exists on that point,
@@ -1072,9 +952,6 @@ impl Buffer {
                 }
             }
         };
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user double-clicks
@@ -1152,9 +1029,6 @@ impl Buffer {
             sel_idx: 0,
             anchor: sel,
         });
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     /// Executed when a user triple-clicks
@@ -1183,9 +1057,6 @@ impl Buffer {
             sel_idx: 0,
             anchor: sel,
         });
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn select_all(&mut self, view_id: ViewId) {
@@ -1195,9 +1066,6 @@ impl Buffer {
         sel.start = 0;
         sel.end = len_chars;
         self.selections.insert(view_id, Selections::with_one(sel));
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn replace_selections(&mut self, view_id: ViewId, new_sels: &[Selection]) {
@@ -1205,9 +1073,6 @@ impl Buffer {
         let sels = self.selections.entry(view_id).or_default();
         sels.sels.clear();
         sels.sels.extend_from_slice(new_sels);
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn undo(&mut self, view_id: ViewId) {
@@ -1225,7 +1090,6 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn redo(&mut self, view_id: ViewId) {
@@ -1243,7 +1107,6 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
@@ -1337,9 +1200,6 @@ impl Buffer {
                 }
             }
         }
-
-        self.on_selection_change();
-        self.scroll_to_selections(view_id);
     }
 
     pub fn drag_end(&mut self, view_id: ViewId) {
@@ -1569,10 +1429,6 @@ impl Buffer {
         rope.write_to(&mut file)?;
 
         self.path = Some(path.into());
-        self.event_sender
-            .lock()
-            .unwrap()
-            .send(Event::BufferUpdate(BufferUpdate::PathChanged(self.id)));
         self.set_pristine(true);
         Ok(())
     }
@@ -1619,16 +1475,14 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         assert_eq!(buf.to_string(), "a");
     }
     #[test]
     fn test_insert2() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1638,8 +1492,7 @@ mod tests {
 
     #[test]
     fn test_move_left() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1649,8 +1502,7 @@ mod tests {
     }
     #[test]
     fn test_move_left_right() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a");
         buf.insert(0, "b");
@@ -1662,8 +1514,7 @@ mod tests {
 
     #[test]
     fn test_move_left_too_far() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.move_left(0);
         buf.move_left(0);
@@ -1673,8 +1524,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_too_far() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.move_right(0);
         buf.move_right(0);
@@ -1685,8 +1535,7 @@ mod tests {
 
     #[test]
     fn test_move_left_and_modify_selection() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left_and_modify_selection(0);
@@ -1699,8 +1548,7 @@ mod tests {
     }
     #[test]
     fn test_move_right_and_modify_selection() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left(0);
@@ -1712,8 +1560,7 @@ mod tests {
     }
     #[test]
     fn test_move_up() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
         buf.move_left(0);
@@ -1723,8 +1570,7 @@ mod tests {
     }
     #[test]
     fn test_move_up2() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "a\nbcd");
         buf.move_up(0);
@@ -1733,8 +1579,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_0() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1744,8 +1589,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_4() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1756,8 +1600,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_8() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1768,8 +1611,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_to_tab_9() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "\tabc");
         buf.insert_newline(0);
@@ -1780,8 +1622,7 @@ mod tests {
     }
     #[test]
     fn test_move_up_from_tab() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abcdefghi");
         buf.insert_newline(0);
@@ -1792,8 +1633,7 @@ mod tests {
     }
     #[test]
     fn test_move_down() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\ndef");
         buf.move_left(0);
@@ -1810,8 +1650,7 @@ mod tests {
     }
     #[test]
     fn test_move_down2() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc\nd");
         buf.move_left(0);
@@ -1828,8 +1667,7 @@ mod tests {
     }
     #[test]
     fn test_move_down3() {
-        let msg_sender = Arc::new(Mutex::new(EventSender::new()));
-        let mut buf = Buffer::new(0, msg_sender);
+        let mut buf = Buffer::new(0);
         buf.init_view(0);
         buf.insert(0, "abc");
         buf.move_left(0);

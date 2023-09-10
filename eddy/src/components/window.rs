@@ -9,7 +9,6 @@ use crate::components::tab_label::TabLabelComponent;
 use super::code_view::CodeViewComponent;
 use super::dirbar::DirBarComponent;
 
-
 #[allow(dead_code)]
 pub struct WindowComponent {
     window: gtk::ApplicationWindow,
@@ -100,6 +99,9 @@ impl Component for WindowComponent {
             self.tab_labels.push(tl_comp);
         }
 
+        for tab_label in &self.tab_labels {
+            tab_label.rebuild();
+        }
         dbg!("open");
     }
 }
