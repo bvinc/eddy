@@ -23,7 +23,7 @@ fn is_valid_lf(s: &str) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn is_valid_cr(s: &str) -> bool {
@@ -32,7 +32,7 @@ fn is_valid_cr(s: &str) -> bool {
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn is_valid_crlf(s: &str) -> bool {
@@ -56,10 +56,10 @@ fn is_valid_crlf(s: &str) -> bool {
     if prev_was_cr {
         return false;
     }
-    return true;
+    true
 }
 
-fn normalize<'a, 'b>(s: &'a str, ending: &'b str) -> Cow<'a, str> {
+fn normalize<'a>(s: &'a str, ending: &str) -> Cow<'a, str> {
     if is_valid_lf(s) {
         return Cow::Borrowed(s);
     }

@@ -72,7 +72,7 @@ fn prepare_lsp_json(msg: &Value) -> Result<String, serde_json::error::Error> {
 fn number_from_id(id: &Id) -> u64 {
     match *id {
         Id::Num(n) => n as u64,
-        Id::Str(ref s) => u64::from_str_radix(s, 10).expect("failed to convert string id to u64"),
+        Id::Str(ref s) => str::parse(s).expect("failed to convert string id to u64"),
         _ => panic!("unexpected value for id: None"),
     }
 }
@@ -184,7 +184,7 @@ impl LanguageServerClient {
         self.pending.insert(self.next_id, completion);
         self.next_id += 1;
 
-        self.send_rpc(&to_value(&request).unwrap());
+        self.send_rpc(&to_value(request).unwrap());
     }
 
     fn send_rpc(&mut self, value: &Value) {
@@ -199,7 +199,7 @@ impl LanguageServerClient {
 
     pub fn send_notification(&mut self, method: &str, params: Params) {
         let notification = JsonRpc::notification_with_params(method, params);
-        let res = to_value(&notification).unwrap();
+        let res = to_value(notification).unwrap();
         self.send_rpc(&res);
     }
 }

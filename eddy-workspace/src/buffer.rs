@@ -499,7 +499,7 @@ impl Buffer {
 
         // If we don't currently have a horizontal alignment, calculate the
         // graphemes from the line start.
-        let horiz = horiz.unwrap_or_else(|| cur_x_diff);
+        let horiz = horiz.unwrap_or(cur_x_diff);
 
         if line == len_lines - 1 {
             // There is no next line
@@ -964,7 +964,7 @@ impl Buffer {
         }
         use CharClass::*;
         impl CharClass {
-            fn from_rope(slice: RopeSlice) -> Self {
+            fn from_rope(slice: RopeSlice<'_>) -> Self {
                 if slice.len_chars() == 1 {
                     let c = slice.char(0);
                     if c.is_whitespace() {
@@ -988,11 +988,11 @@ impl Buffer {
 
         let left_char = left_iter
             .next()
-            .map(|s| CharClass::from_rope(s))
+            .map(CharClass::from_rope)
             .unwrap_or(CharClass::Space);
         let right_char = right_iter
             .next()
-            .map(|s| CharClass::from_rope(s))
+            .map(CharClass::from_rope)
             .unwrap_or(CharClass::Space);
 
         let mut word_class = Symbol;
@@ -1128,7 +1128,7 @@ impl Buffer {
             if !sel.is_caret() {
                 // Just remove the selection
                 let rope = &self.rope;
-                let text: Cow<str> = rope.slice(sel.range()).into();
+                let text: Cow<'_, str> = rope.slice(sel.range()).into();
                 if !ret.is_empty() {
                     ret.push('\n');
                 }
@@ -1214,7 +1214,7 @@ impl Buffer {
         let rope = &self.rope;
         let len_chars = rope.len_chars();
 
-        for (_, sels) in &mut self.selections {
+        for sels in self.selections.values_mut() {
             for sel in &mut sels.sels {
                 if sel.start > len_chars {
                     sel.start = len_chars
@@ -1228,7 +1228,7 @@ impl Buffer {
 
     pub fn check_invariants(&mut self, view_id: ViewId) {
         let rope = &self.rope;
-        debug_assert!(self.selections.get(&view_id).unwrap().sels.len() > 0);
+        debug_assert!(!self.selections.get(&view_id).unwrap().sels.is_empty());
         for sel in &mut self.selections.entry(view_id).or_default().sels {
             // dbg!(
             //     rope,
@@ -1263,7 +1263,7 @@ impl Buffer {
         let rope = &self.rope;
         rope.len_lines()
     }
-    pub fn line(&self, line_idx: usize) -> RopeSlice {
+    pub fn line(&self, line_idx: usize) -> RopeSlice<'_> {
         let rope = &self.rope;
         rope.line(line_idx)
     }
@@ -1305,7 +1305,7 @@ impl Buffer {
         view_id: ViewId,
         line_idx: usize,
         theme: &Theme,
-    ) -> Option<(RopeSlice, Vec<AttrSpan>)> {
+    ) -> Option<(RopeSlice<'_>, Vec<AttrSpan>)> {
         let rope = &self.rope;
         if line_idx >= rope.len_lines() {
             return None;
@@ -1339,7 +1339,7 @@ impl Buffer {
                     let end_byte = min(line_end, cur.node().end_byte()) - line_start;
 
                     if let Some(capture) = self.layer.capture_from_node(cur.node().id()) {
-                        if let Some(attrs) = theme.attributes(capture).clone() {
+                        if let Some(attrs) = theme.attributes(capture) {
                             if let Some(fg) = attrs.fg {
                                 spans.push(AttrSpan {
                                     start_idx: start_byte,
@@ -1389,7 +1389,7 @@ impl Buffer {
                 if sel_min_byte < line_end && sel_max_byte > line_start {
                     let start_byte = max(line_start, sel_min_byte) - line_start;
                     let end_byte = min(line_end, sel_max_byte) - line_start;
-                    let attrs = theme.selection.clone();
+                    let attrs = theme.selection;
                     if let Some(fg) = attrs.fg {
                         spans.push(AttrSpan {
                             start_idx: start_byte,

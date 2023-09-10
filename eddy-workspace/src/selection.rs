@@ -1,7 +1,7 @@
 use crate::Range;
 use std::cmp::{max, min};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Selection {
     /// start of a selection region, in character indexes
     pub start: usize,
@@ -13,11 +13,7 @@ pub struct Selection {
 
 impl Selection {
     pub fn new() -> Self {
-        Self {
-            start: 0,
-            end: 0,
-            horiz: None,
-        }
+        Default::default()
     }
     pub fn left(&self) -> usize {
         min(self.start, self.end)
