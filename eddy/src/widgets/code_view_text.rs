@@ -90,36 +90,32 @@ impl ObjectImpl for CodeViewTextPrivate {
     fn properties() -> &'static [ParamSpec] {
         static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
             vec![
-                ParamSpecObject::new(
-                    "hadjustment",
-                    "Horizontal Adjustment",
-                    "Horizontal `GtkAdjustment` of the scrollable widget",
-                    gtk::Adjustment::static_type(),
-                    glib::ParamFlags::READWRITE,
-                ),
-                ParamSpecEnum::new(
+                ParamSpecObject::builder::<gtk::Adjustment>("hadjustment")
+                    .nick("Horizontal Adjustment")
+                    .blurb("Horizontal `GtkAdjustment` of the scrollable widget")
+                    .flags(glib::ParamFlags::READWRITE)
+                    .build(),
+                ParamSpecEnum::builder_with_default::<gtk::ScrollablePolicy>(
                     "hscroll-policy",
-                    "Horizontal Scroll Policy",
-                    "Determines when horizontal scrolling should start",
-                    gtk::ScrollablePolicy::static_type(),
-                    0,
-                    glib::ParamFlags::READWRITE,
-                ),
-                ParamSpecObject::new(
-                    "vadjustment",
-                    "Vertical Adjustment",
-                    "Vertical `GtkAdjustment` of the scrollable widget",
-                    gtk::Adjustment::static_type(),
-                    glib::ParamFlags::READWRITE,
-                ),
-                ParamSpecEnum::new(
+                    gtk::ScrollablePolicy::Minimum,
+                )
+                .nick("Horizontal Scroll Policy")
+                .blurb("Determines when horizontal scrolling should start")
+                .flags(glib::ParamFlags::READWRITE)
+                .build(),
+                ParamSpecObject::builder::<gtk::Adjustment>("vadjustment")
+                    .nick("Vertical Adjustment")
+                    .blurb("Vertical `GtkAdjustment` of the scrollable widget")
+                    .flags(glib::ParamFlags::READWRITE)
+                    .build(),
+                ParamSpecEnum::builder_with_default::<gtk::ScrollablePolicy>(
                     "vscroll-policy",
-                    "Vertical Scroll Policy",
-                    "Determines when vertical scrolling should start",
-                    gtk::ScrollablePolicy::static_type(),
-                    0,
-                    glib::ParamFlags::READWRITE,
-                ),
+                    gtk::ScrollablePolicy::Minimum,
+                )
+                .nick("Vertical Scroll Policy")
+                .blurb("Determines when vertical scrolling should start")
+                .flags(glib::ParamFlags::READWRITE)
+                .build(),
             ]
         });
         PROPERTIES.as_ref()
