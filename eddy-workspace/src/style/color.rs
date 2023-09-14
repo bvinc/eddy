@@ -69,7 +69,7 @@ impl FromStr for Color {
         if s.len() != 7 || s.chars().count() != 7 {
             return Err(ParseColorError);
         }
-        if let Some(b'#') = s.bytes().nth(0) {
+        if let Some(b'#') = s.as_bytes().first().copied() {
         } else {
             return Err(ParseColorError);
         }

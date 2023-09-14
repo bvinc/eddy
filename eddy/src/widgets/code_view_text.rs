@@ -258,12 +258,12 @@ impl CodeViewTextPrivate {
             None,
         );
 
-        if items.len() > 0 && items[0].offset() == 0 && items[0].length() == 1 {
+        if !items.is_empty() && items[0].offset() == 0 && items[0].length() == 1 {
             let item = &items[0];
             let mut glyphs = pango::GlyphString::new();
             pango::shape_full(space, None, item.analysis(), &mut glyphs);
             let glyph_info = glyphs.glyph_info();
-            if glyph_info.len() > 0 {
+            if !glyph_info.is_empty() {
                 self.font_metrics.borrow_mut().space_glyph = glyph_info[0].glyph();
                 self.font_metrics.borrow_mut().space_width =
                     glyph_info[0].geometry().width() as f64 / pango::SCALE as f64;
@@ -328,7 +328,7 @@ impl CodeViewTextPrivate {
         let text_height = len_lines as f64 * font_height;
         let da_height = f64::from(cvt.allocated_height());
 
-        self.set_adj_upper(&self.vadj, da_height as f64, text_height);
+        self.set_adj_upper(&self.vadj, da_height, text_height);
     }
 
     fn buffer_changed(&self, cvt: &CodeViewText) {
@@ -343,7 +343,7 @@ impl CodeViewTextPrivate {
         let font_height = self.font_metrics.borrow().font_height;
         let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
 
-        if selections.len() == 0 {
+        if selections.is_empty() {
             return;
         }
 
@@ -653,7 +653,7 @@ impl CodeViewTextPrivate {
                     let rect_node = gtk::gsk::ColorNode::new(
                         &bg_color,
                         &graphene::Rect::new(
-                            line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
+                            line_x + item.x_off as f32 / pango::SCALE as f32,
                             line_y - font_ascent as f32,
                             item.width as f32 / pango::SCALE as f32,
                             font_height as f32,
@@ -667,10 +667,7 @@ impl CodeViewTextPrivate {
                     &item.analysis().font(),
                     &item.glyphs,
                     &fg_color,
-                    &graphene::Point::new(
-                        line_x + (item.x_off as f32 / pango::SCALE as f32) as f32,
-                        line_y,
-                    ),
+                    &graphene::Point::new(line_x + item.x_off as f32 / pango::SCALE as f32, line_y),
                 ) {
                     append_clipped_node(snapshot, text_node, da_width, da_height);
                 }
@@ -717,9 +714,9 @@ impl CodeViewTextPrivate {
     fn set_adj_upper(&self, adj: &RefCell<Adjustment>, da_length: f64, content_length: f64) {
         let adj = adj.borrow();
         let mut upper: f64 = if da_length > content_length {
-            da_length as f64
+            da_length
         } else {
-            content_length as f64
+            content_length
         };
 
         if adj.value() + adj.page_size() > upper {
@@ -791,7 +788,7 @@ impl CodeViewTextPrivate {
         glyphs: &mut pango::GlyphString,
     ) {
         let glyph_info = glyphs.glyph_info_mut();
-        if glyph_info.len() == 0 {
+        if glyph_info.is_empty() {
             return;
         }
         if text.bytes().nth(item.offset() as usize) == Some(b'\t') {
