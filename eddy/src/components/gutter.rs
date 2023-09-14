@@ -1,12 +1,9 @@
 use crate::widgets::gutter::Gutter;
 
-
 use eddy_workspace::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx};
 
 use gtk::prelude::*;
-
-
 
 #[allow(dead_code)]
 pub struct GutterComponent {
@@ -29,7 +26,8 @@ impl Component for GutterComponent {
         Self { gutter }
     }
 
-    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {
+    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
         self.gutter.queue_draw();
+        ctx.rebuild_children();
     }
 }

@@ -3,6 +3,7 @@ members = [
   "eddy",
   "eddy-workspace",
   "eddy-ts",
+  "gflux",
   "wasm-test",
 ]
 resolver = "2"

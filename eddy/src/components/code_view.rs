@@ -28,12 +28,13 @@ impl Component for CodeViewComponent {
         let hadj = gtk::Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         let vadj = gtk::Adjustment::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-        let cvt: ComponentHandle<CodeViewTextComponent> = ctx.create_child(|ws| ws, view_id);
+        let cvt: ComponentHandle<CodeViewTextComponent> =
+            ctx.create_child(|ws| ws, |ws| ws, view_id);
         // let cvt = CodeViewText::new();
         cvt.widget().set_hadjust(&hadj);
         cvt.widget().set_vadjust(&vadj);
 
-        let gutter: ComponentHandle<GutterComponent> = ctx.create_child(|ws| ws, view_id);
+        let gutter: ComponentHandle<GutterComponent> = ctx.create_child(|ws| ws, |ws| ws, view_id);
         gutter.widget().set_vadjust(&vadj); // TODO
 
         let scrolled_window = gtk::ScrolledWindow::builder()
@@ -52,8 +53,7 @@ impl Component for CodeViewComponent {
         Self { hbox, cvt, gutter }
     }
 
-    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {
-        println!("cv rebuild");
-        self.gutter.rebuild();
+    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
+        ctx.rebuild_children();
     }
 }

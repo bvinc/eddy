@@ -1,6 +1,6 @@
 use components::app::AppComponent;
 use eddy_workspace::Workspace;
-use gflux::{ComponentHandle, ComponentTree};
+use gflux::{ComponentHandle, ComponentTree, Obs};
 use glib::{clone, ExitCode};
 use gtk::prelude::*;
 use std::cell::RefCell;
@@ -16,19 +16,16 @@ fn main() -> ExitCode {
     gtk::init().expect("gtk init");
 
     // Create the global application state
-    let workspace = Rc::new(RefCell::new(Workspace::new()));
+    let workspace = Rc::new(RefCell::new(Obs::new(Workspace::new())));
 
     // Create the root of the component tree
-    let mut ctree = ComponentTree::new(workspace);
+    let mut ctree = ComponentTree::new(workspace.clone());
 
-    // When the tree first moves from clean to dirty, use `idle_add_local_once`
-    // to make sure that `ctree.exec_rebuilds()` later gets called from the gtk
-    // main loop
-    ctree.on_first_change(clone!(@strong ctree => move || {
+    workspace.borrow_mut().observe(clone!(@strong ctree => move |_| {
         glib::source::idle_add_local_once(clone!(@strong ctree => move || ctree.exec_rebuilds()));
     }));
 
-    let appc: ComponentHandle<AppComponent> = ctree.new_component(|s| s, ());
+    let appc: ComponentHandle<AppComponent> = ctree.new_component(|s| s, |s| s, ());
 
     // Run the application
     appc.widget().run()

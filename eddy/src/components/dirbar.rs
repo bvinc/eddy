@@ -94,8 +94,6 @@ impl Component for DirBarComponent {
             tree_store,
         }
     }
-
-    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {}
 }
 
 /// Given a path in the tree, clear it of its children, and re-read the

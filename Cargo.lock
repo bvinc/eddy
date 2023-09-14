@@ -340,8 +340,10 @@ dependencies = [
 [[package]]
 name = "gflux"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b94b65b6068c18e07b2e0f2e42ea24493ae8229e3dc993014549c53690f2fd83"
+dependencies = [
+ "glib",
+ "gtk4",
+]
 
 [[package]]
 name = "gio"

@@ -1,0 +1,12 @@
+[package]
+documentation = "https://docs.rs/gflux"
+edition = "2021"
+license = "MIT"
+name = "gflux-example-todo"
+readme = "README.md"
+repository = "https://github.com/bvinc/gflux"
+version = "0.1.3"
+
+[dependencies]
+glib = {version = "0.17"}
+gtk = {package = "gtk4", version = "0.6"}

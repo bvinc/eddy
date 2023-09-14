@@ -131,8 +131,12 @@ impl Buffer {
     }
 
     /// Get selections that are part of a view
-    pub fn selections(&self, view_id: ViewId) -> &[Selection] {
-        &self.selections.get(&view_id).unwrap().sels
+    pub fn selections(&self, view_id: ViewId) -> Vec<Selection> {
+        self.selections
+            .get(&view_id)
+            .as_ref()
+            .map(|s| s.sels.to_vec())
+            .unwrap_or_default()
     }
 
     /// Subscribe to buffer updates.  Whenever this buffer changes, call `cb`.

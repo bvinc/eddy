@@ -1,5 +1,5 @@
 use super::window::WindowComponent;
-use eddy_workspace::Workspace;
+use crate::AppState;
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use glib::clone;
 use gtk::prelude::*;
@@ -13,8 +13,8 @@ pub struct AppComponent {
 }
 
 impl Component for AppComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = AppState;
+    type Model = AppState;
     type Widget = gtk::Application;
     type Params = ();
 
@@ -24,14 +24,14 @@ impl Component for AppComponent {
 
     fn build(ctx: ComponentCtx<Self>, _params: ()) -> Self {
         let app = gtk::Application::builder()
-            .application_id("com.github.bvinc.eddy")
+            .application_id("com.github.bvinc.gflux.todo")
             .build();
 
         let win_components = Rc::new(RefCell::new(vec![]));
 
         app.connect_activate(clone!(@strong win_components => move |app| {
             let c: ComponentHandle<WindowComponent> =
-                ctx.create_child(|s: &Workspace| s, |s: &mut Workspace| s, app.clone());
+                ctx.create_child(|s: &AppState| s, |s: &mut AppState| s, app.clone());
 
             c.widget().present();
 
@@ -42,9 +42,5 @@ impl Component for AppComponent {
             app,
             win_components,
         }
-    }
-
-    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
-        ctx.rebuild_children();
     }
 }

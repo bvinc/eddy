@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use eddy_workspace::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx, ComponentHandle};
@@ -13,8 +13,8 @@ use super::dirbar::DirBarComponent;
 pub struct WindowComponent {
     window: gtk::ApplicationWindow,
     dir_bar: ComponentHandle<DirBarComponent>,
-    code_views: Vec<ComponentHandle<CodeViewComponent>>,
-    tab_labels: Vec<ComponentHandle<TabLabelComponent>>,
+    code_views: HashMap<ViewId, ComponentHandle<CodeViewComponent>>,
+    tab_labels: HashMap<ViewId, ComponentHandle<TabLabelComponent>>,
     notebook: gtk::Notebook,
     last_views: HashSet<ViewId>,
 }
@@ -37,14 +37,14 @@ impl Component for WindowComponent {
         header_bar.pack_start(&new_button);
         header_bar.pack_end(&menu_button);
 
-        let dir_bar = ctx.create_child(|s| s, ());
+        let dir_bar = ctx.create_child(|s| s, |s| s, ());
         let sidebar_scrolled_window = gtk::ScrolledWindow::builder()
             .child(&dir_bar.widget())
             .build();
 
         let notebook = gtk::Notebook::new();
-        let code_views = Vec::new();
-        let tab_labels = Vec::new();
+        let code_views = HashMap::new();
+        let tab_labels = HashMap::new();
 
         let sidebar_paned = gtk::Paned::new(Orientation::Horizontal);
         sidebar_paned.set_start_child(Some(&sidebar_scrolled_window));
@@ -82,26 +82,37 @@ impl Component for WindowComponent {
     }
 
     fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
-        println!("window rebuild");
+        dbg!("window rebuild");
         let views: HashSet<ViewId> = ctx.with_model(|ws| ws.views.keys().copied().collect());
         let last_views: HashSet<ViewId> = self.last_views.clone();
 
-        for view_id in views.difference(&last_views).copied() {
-            let cv_comp: ComponentHandle<CodeViewComponent> = ctx.create_child(|ws| ws, view_id);
-            let tl_comp: ComponentHandle<TabLabelComponent> = ctx.create_child(|ws| ws, view_id);
+        // Remove old views
+        for view_id in last_views.difference(&views) {
             let page_num = self
                 .notebook
-                .append_page(&cv_comp.widget(), Some(&tl_comp.widget()));
+                .page_num(&self.code_views.get(view_id).unwrap().widget());
+            self.notebook.remove_page(page_num);
+            self.code_views.remove(view_id);
+            self.tab_labels.remove(view_id);
+        }
+
+        // Add new views
+        for view_id in views.difference(&last_views).copied() {
+            let cv_comp: ComponentHandle<CodeViewComponent> =
+                ctx.create_child(|ws| ws, |ws| ws, view_id);
+            let tl_comp: ComponentHandle<TabLabelComponent> =
+                ctx.create_child(|ws| ws, |ws| ws, view_id);
+            let page_num = dbg!(self
+                .notebook
+                .append_page(&cv_comp.widget(), Some(&tl_comp.widget())));
             self.notebook.set_page(page_num as i32);
-            self.last_views.insert(view_id);
 
-            self.code_views.push(cv_comp);
-            self.tab_labels.push(tl_comp);
+            self.code_views.insert(view_id, cv_comp);
+            self.tab_labels.insert(view_id, tl_comp);
         }
 
-        for tab_label in &self.tab_labels {
-            tab_label.rebuild();
-        }
-        dbg!("open");
+        self.last_views = views;
+
+        ctx.rebuild_children();
     }
 }

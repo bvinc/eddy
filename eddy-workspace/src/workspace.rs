@@ -43,7 +43,7 @@ impl Workspace {
         let view_id = self.views.keys().max().copied().unwrap_or_default() + 1;
         let buf_id = self.buffers.keys().max().copied().unwrap_or_default() + 1;
         self.views.insert(view_id, buf_id);
-        dbg!("new view", view_id);
+        dbg!("new view", view_id, buf_id);
         let mut buffer = if let Some(path) = path {
             let buf = Buffer::from_file(buf_id, path)?;
 
@@ -100,13 +100,15 @@ impl Workspace {
         Ok(view_id)
     }
 
-    pub fn close_view(&self, view_id: usize) {
+    pub fn close_view(&mut self, view_id: usize) {
         debug!("close view {}", view_id);
+        self.views.remove(&view_id);
     }
 
     pub fn display_name(&self, view_id: usize) -> String {
+        let buf_id = self.views.get(&view_id).unwrap();
         self.buffers
-            .get(&view_id)
+            .get(buf_id)
             .and_then(|b| {
                 b.path
                     .as_ref()
@@ -124,22 +126,27 @@ impl Workspace {
     }
 
     pub fn buffer(&self, view_id: usize) -> &Buffer {
-        self.buffers.get(&view_id).unwrap().clone()
+        let buf_id = self.views.get(&view_id).unwrap();
+        self.buffers.get(buf_id).unwrap().clone()
     }
 
     pub fn buffer_mut(&mut self, view_id: usize) -> &mut Buffer {
-        self.buffers.get_mut(&view_id).unwrap()
+        let buf_id = self.views.get(&view_id).unwrap();
+        self.buffers.get_mut(buf_id).unwrap()
     }
 
     pub fn buffer_and_theme(&self, view_id: usize) -> (&Buffer, Theme) {
+        let buf_id = self.views.get(&view_id).unwrap();
         (
-            self.buffers.get(&view_id).unwrap().clone(),
+            self.buffers.get(buf_id).unwrap().clone(),
             self.theme.clone(),
         )
     }
 
     pub fn buffer_and_theme_mut(&mut self, view_id: usize) -> (&mut Buffer, Theme) {
-        (self.buffers.get_mut(&view_id).unwrap(), self.theme.clone())
+        let buf_id = self.views.get(&view_id).unwrap();
+
+        (self.buffers.get_mut(buf_id).unwrap(), self.theme.clone())
     }
 
     pub fn save(&mut self, view_id: usize) -> Result<(), anyhow::Error> {
@@ -295,5 +302,17 @@ impl Workspace {
     pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         self.buffer_mut(view_id)
             .drag_update(view_id, line_idx, line_byte_idx);
+    }
+}
+
+mod test {
+    use super::*;
+    #[test]
+    fn test_views() {
+        let mut ws = Workspace::new();
+        let v1 = ws.new_view(None).unwrap();
+        ws.close_view(v1);
+        ws.new_view(None).unwrap();
+        dbg!(ws);
     }
 }
