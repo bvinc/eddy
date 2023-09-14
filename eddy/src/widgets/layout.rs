@@ -44,7 +44,7 @@ impl LayoutLine {
         for item in &self.items {
             width += item.glyphs.width();
         }
-        return width;
+        width
     }
 
     /// Go through all of the consecutive items in the line and convert a byte index to an x value
