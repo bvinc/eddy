@@ -142,7 +142,7 @@ impl ObjectImpl for CodeViewTextPrivate {
         font_desc.set_family("Hack, Mono");
         font_desc.set_size(16384);
         pango_ctx.set_font_description(Some(&font_desc));
-        CodeViewTextPrivate::from_instance(&obj).on_font_change(&obj);
+        CodeViewTextPrivate::from_obj(&obj).on_font_change(&obj);
 
         obj.set_focusable(true);
         obj.set_can_focus(true);
@@ -181,7 +181,7 @@ impl ObjectImpl for CodeViewTextPrivate {
             clone!(@strong obj as this => move |_,key, code, state| {
                 let this_ = CodeViewTextPrivate::from_obj(&this);
                 this_.key_pressed(key, code, state);
-                Propagation::Proceed
+                Propagation::Stop
             }),
         );
         obj.add_controller(event_controller_key);
@@ -877,22 +877,22 @@ impl CodeViewTextPrivate {
             Key::End if ctrl && shift => {
                 self.with_buffer_mut(|b| b.move_to_end_of_document_and_modify_selection(view_id));
             }
-            // Key::Page_Up if norm && !shift => {
-            //     self.with_buffer_mut(|b| b.page_up(view_id, self.page_lines(self)));
-            // }
-            // Key::Page_Down if norm && !shift => {
-            //     self.with_buffer_mut(|b| b.page_down(view_id, self_.page_lines(self)));
-            // }
-            // Key::Page_Up if norm && shift => {
-            //     self.with_buffer_mut(|b| {
-            //         b.page_up_and_modify_selection(view_id, self_.page_lines(self))
-            //     });
-            // }
-            // Key::Page_Down if norm && shift => {
-            //     self.with_buffer_mut(|b| {
-            //         b.page_down_and_modify_selection(view_id, self_.page_lines(self))
-            //     });
-            // }
+            Key::Page_Up if norm && !shift => {
+                self.with_buffer_mut(|b| b.page_up(view_id, self.page_lines(&self.obj())));
+            }
+            Key::Page_Down if norm && !shift => {
+                self.with_buffer_mut(|b| b.page_down(view_id, self.page_lines(&self.obj())));
+            }
+            Key::Page_Up if norm && shift => {
+                self.with_buffer_mut(|b| {
+                    b.page_up_and_modify_selection(view_id, self.page_lines(&self.obj()))
+                });
+            }
+            Key::Page_Down if norm && shift => {
+                self.with_buffer_mut(|b| {
+                    b.page_down_and_modify_selection(view_id, self.page_lines(&self.obj()))
+                });
+            }
             _ => {
                 if let Some(ch) = ch {
                     match ch {

@@ -5,7 +5,7 @@
 #![warn(missing_debug_implementations)]
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::{Rc, Weak};
 
