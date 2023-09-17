@@ -9,8 +9,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::rc::{Rc, Weak};
 
-mod rev_track;
-pub use rev_track::*;
+mod revisioned;
+pub use revisioned::*;
 
 mod obs;
 pub use obs::*;
@@ -91,7 +91,6 @@ impl<M> ComponentTree<M> {
                 .get(cid)
                 .and_then(|wr| wr.upgrade());
             if let Some(c) = c {
-                dbg!(cid);
                 c.borrow_mut().rebuild();
             }
         }

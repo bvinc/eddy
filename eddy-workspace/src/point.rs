@@ -10,3 +10,14 @@ pub struct Point {
     /// The number of code points from the beginning of the line
     pub col: usize,
 }
+
+impl Default for Point {
+    fn default() -> Self {
+        Self {
+            byte: 0,
+            char: 0,
+            line: 0,
+            col: 0,
+        }
+    }
+}

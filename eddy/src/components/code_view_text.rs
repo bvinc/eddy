@@ -1,17 +1,14 @@
 use crate::widgets::code_view_text::CodeViewText;
 
-
-
 use eddy_workspace::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx};
 
 use gtk::prelude::*;
 
-
-
 #[allow(dead_code)]
 pub struct CodeViewTextComponent {
     cvt: CodeViewText,
+    view_id: ViewId,
 }
 
 impl Component for CodeViewTextComponent {
@@ -31,10 +28,10 @@ impl Component for CodeViewTextComponent {
         // cvt.set_vadjust(&vadj); TODO
 
         // cvt.set_hscroll_policy(gtk::ScrollablePolicy::Natural); TODO
-        Self { cvt }
+        Self { cvt, view_id }
     }
 
-    fn rebuild(&mut self, _ctx: ComponentCtx<Self>) {
+    fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
         self.cvt.queue_draw();
     }
 }

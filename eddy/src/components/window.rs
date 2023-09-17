@@ -82,7 +82,7 @@ impl Component for WindowComponent {
     }
 
     fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
-        dbg!("window rebuild");
+        // dbg!("window rebuild");
         let views: HashSet<ViewId> = ctx.with_model(|ws| ws.views.keys().copied().collect());
         let last_views: HashSet<ViewId> = self.last_views.clone();
 

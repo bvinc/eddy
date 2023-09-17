@@ -8,6 +8,7 @@ use crate::style::{Attr, AttrSpan, Theme};
 use crate::tab_mode::TabMode;
 use crate::{BufferId, Point, Range, Selection, ViewId};
 use anyhow::bail;
+use gflux::Rev;
 use log::*;
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;

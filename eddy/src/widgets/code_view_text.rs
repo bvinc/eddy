@@ -817,81 +817,124 @@ impl CodeViewTextPrivate {
         let norm = !alt && !ctrl && !meta;
 
         match key {
-            Key::Delete if norm => self.with_buffer_mut(|b| b.delete_forward(view_id)),
-            Key::BackSpace if norm => self.with_buffer_mut(|b| b.delete_backward(view_id)),
+            Key::Delete if norm => {
+                self.with_buffer_mut(|b| b.delete_forward(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
+
+            Key::BackSpace if norm => {
+                self.with_buffer_mut(|b| b.delete_backward(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
             Key::Return | Key::KP_Enter => {
                 self.with_buffer_mut(|b| b.insert_newline(view_id));
+                self.scroll_to_carets(&self.obj());
             }
-            Key::Tab if norm && !shift => self.with_buffer_mut(|b| b.insert_tab(view_id)),
-            Key::Up if norm && !shift => self.with_buffer_mut(|b| b.move_up(view_id)),
-            Key::Down if norm && !shift => self.with_buffer_mut(|b| b.move_down(view_id)),
-            Key::Left if norm && !shift => self.with_buffer_mut(|b| b.move_left(view_id)),
-            Key::Right if norm && !shift => self.with_buffer_mut(|b| b.move_right(view_id)),
+            Key::Tab if norm && !shift => {
+                self.with_buffer_mut(|b| b.insert_tab(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
+            Key::Up if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_up(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
+            Key::Down if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_down(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
+            Key::Left if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_left(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
+            Key::Right if norm && !shift => {
+                self.with_buffer_mut(|b| b.move_right(view_id));
+                self.scroll_to_carets(&self.obj());
+            }
             Key::Up if norm && shift => {
                 self.with_buffer_mut(|b| b.move_up_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Down if norm && shift => {
                 self.with_buffer_mut(|b| b.move_down_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Left if norm && shift => {
                 self.with_buffer_mut(|b| b.move_left_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Right if norm && shift => {
                 self.with_buffer_mut(|b| b.move_right_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Left if ctrl && !shift => {
                 self.with_buffer_mut(|b| b.move_word_left(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Right if ctrl && !shift => {
                 self.with_buffer_mut(|b| b.move_word_right(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Left if ctrl && shift => {
                 self.with_buffer_mut(|b| b.move_word_left_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Right if ctrl && shift => {
                 self.with_buffer_mut(|b| b.move_word_right_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Home if norm && !shift => {
                 self.with_buffer_mut(|b| b.move_to_left_end_of_line(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::End if norm && !shift => {
                 self.with_buffer_mut(|b| b.move_to_right_end_of_line(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Home if norm && shift => {
                 self.with_buffer_mut(|b| b.move_to_left_end_of_line_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::End if norm && shift => {
                 self.with_buffer_mut(|b| b.move_to_right_end_of_line_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Home if ctrl && !shift => {
                 self.with_buffer_mut(|b| b.move_to_beginning_of_document(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::End if ctrl && !shift => {
                 self.with_buffer_mut(|b| b.move_to_end_of_document(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Home if ctrl && shift => {
                 self.with_buffer_mut(|b| {
                     b.move_to_beginning_of_document_and_modify_selection(view_id)
                 });
+                self.scroll_to_carets(&self.obj());
             }
             Key::End if ctrl && shift => {
                 self.with_buffer_mut(|b| b.move_to_end_of_document_and_modify_selection(view_id));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Page_Up if norm && !shift => {
                 self.with_buffer_mut(|b| b.page_up(view_id, self.page_lines(&self.obj())));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Page_Down if norm && !shift => {
                 self.with_buffer_mut(|b| b.page_down(view_id, self.page_lines(&self.obj())));
+                self.scroll_to_carets(&self.obj());
             }
             Key::Page_Up if norm && shift => {
                 self.with_buffer_mut(|b| {
                     b.page_up_and_modify_selection(view_id, self.page_lines(&self.obj()))
                 });
+                self.scroll_to_carets(&self.obj());
             }
             Key::Page_Down if norm && shift => {
                 self.with_buffer_mut(|b| {
                     b.page_down_and_modify_selection(view_id, self.page_lines(&self.obj()))
                 });
+                self.scroll_to_carets(&self.obj());
             }
             _ => {
                 if let Some(ch) = ch {
