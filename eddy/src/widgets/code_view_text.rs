@@ -523,6 +523,7 @@ impl CodeViewTextPrivate {
     fn gesture_drag(&self, cvt: &CodeViewText, x: f64, y: f64) {
         let (line, idx) = self.xy_to_line_idx(cvt, x, y);
         self.with_buffer_mut(|b| b.drag_update(self.view_id.get(), line, idx));
+        self.scroll_to_carets(&self.obj());
     }
 
     fn drag_end(&self, _cvt: &CodeViewText) {
