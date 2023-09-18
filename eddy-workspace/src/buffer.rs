@@ -166,9 +166,7 @@ impl Buffer {
     }
 
     fn set_pristine(&mut self, pristine: bool) {
-        if self.pristine != pristine {
-            self.pristine = pristine
-        }
+        self.pristine = pristine
     }
 
     /// Removes a range of text from the buffer
@@ -1095,6 +1093,7 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
+        self.set_pristine(false);
     }
 
     pub fn redo(&mut self, view_id: ViewId) {
@@ -1112,6 +1111,7 @@ impl Buffer {
 
         self.fix_selections();
         self.on_text_change();
+        self.set_pristine(false);
     }
 
     pub fn cut(&mut self, view_id: ViewId) -> Option<String> {
