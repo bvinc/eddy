@@ -26,6 +26,7 @@ pub struct Workspace {
     pub theme: Theme,
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
     pub dir: PathBuf,
+    pub focused_view: Option<ViewId>,
 }
 
 impl Workspace {
@@ -36,10 +37,11 @@ impl Workspace {
             theme: Theme::new(),
             ls_client: None,
             dir: std::env::current_dir().expect("cwd"),
+            focused_view: None,
         }
     }
 
-    pub fn new_view(&mut self, path: Option<&Path>) -> Result<ViewId, io::Error> {
+    pub fn new_view(&mut self, path: Option<&Path>) -> Result<ViewId, anyhow::Error> {
         let view_id = self.views.keys().max().copied().unwrap_or_default() + 1;
         let buf_id = self.buffers.keys().max().copied().unwrap_or_default() + 1;
         self.views.insert(view_id, buf_id);
@@ -103,6 +105,9 @@ impl Workspace {
     pub fn close_view(&mut self, view_id: usize) {
         debug!("close view {}", view_id);
         self.views.remove(&view_id);
+        if self.focused_view == Some(view_id) {
+            self.focused_view = None;
+        }
     }
 
     pub fn display_name(&self, view_id: usize) -> String {
@@ -147,6 +152,10 @@ impl Workspace {
         let buf_id = self.views.get(&view_id).unwrap();
 
         (self.buffers.get_mut(buf_id).unwrap(), self.theme.clone())
+    }
+
+    pub fn has_path(&self, view_id: usize) -> bool {
+        self.buffer(view_id).path.is_some()
     }
 
     pub fn save(&mut self, view_id: usize) -> Result<(), anyhow::Error> {

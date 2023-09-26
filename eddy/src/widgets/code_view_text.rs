@@ -360,7 +360,7 @@ impl CodeViewTextPrivate {
 
             let line_byte = self.with_buffer(|b| b.char_to_byte(sel.cursor()))
                 - self.with_buffer(|b| b.line_to_byte(line));
-            let layout_line = self.make_layout_line(cvt, line);
+            let layout_line = self.make_layout_line(line);
             let x = layout_line.index_to_x(line_byte) as f64 / pango::SCALE as f64;
             let cur_min_x = x;
             let cur_max_x = x + CURSOR_WIDTH;
@@ -394,7 +394,9 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn make_layout_line(&self, cvt: &CodeViewText, line_num: usize) -> LayoutLine {
+    fn make_layout_line(&self, line_num: usize) -> LayoutLine {
+        let cvt = self.obj();
+
         let text_theme = self.ctx.get().unwrap().with_model(|ws| ws.theme.clone());
         // Keep track of the starting x position
 
@@ -458,7 +460,7 @@ impl CodeViewTextPrivate {
         let font_height = self.font_metrics.borrow().font_height;
 
         let line = ((vadj_value + y) / font_height) as usize;
-        let layout_line = self.make_layout_line(cvt, line);
+        let layout_line = self.make_layout_line(line);
         let idx = layout_line.x_to_index(x as i32 * pango::SCALE);
 
         (line, idx)
@@ -630,7 +632,7 @@ impl CodeViewTextPrivate {
             let line_y =
                 font_ascent as f32 + font_height as f32 * (line_num as f32) - vadj_value as f32;
 
-            let mut layout_line = self.make_layout_line(cvt, line_num);
+            let mut layout_line = self.make_layout_line(line_num);
             // Loop through the items
             for item in &mut layout_line.items {
                 let mut bg_color: Option<gdk::RGBA> = None;
@@ -993,10 +995,19 @@ impl CodeViewText {
 
         imp.view_id.set(view_id);
         // imp.workspace.set(workspace);
-        imp.ctx.set(ctx);
+        imp.ctx.set(ctx.clone());
 
         // code_view.setup_widgets();
         // code_view.setup_signals();
+
+        obj.connect_has_focus_notify(clone!(@strong ctx=> move |_| {
+            let focused_view = ctx.with_model(|ws| ws.focused_view);
+            if focused_view != Some(view_id) {
+                println!("focused changed to {}", view_id);
+                ctx.with_model_mut(|ws| ws.focused_view = Some(view_id));
+            }
+        }));
+
         obj
     }
 

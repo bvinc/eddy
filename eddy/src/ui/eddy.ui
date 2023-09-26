@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.14.0 -->
+<interface>
+  <!-- interface-name eddy.ui -->
+  <requires lib="gtk" version="4.10"/>
+  <object class="GtkPopoverMenu" id="hamburger_popover">
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkMenuButton" id="save">
+            <property name="label">Save</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkMenuButton" id="close">
+            <property name="label">close</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
