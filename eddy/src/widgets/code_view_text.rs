@@ -802,6 +802,19 @@ impl CodeViewTextPrivate {
         }
     }
 
+    fn do_copy(&self, state: ModifierType) {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let clipboard = gdk::Display::clipboard(&display);
+
+        let view_id = self.view_id.get();
+
+        if let Some(text) = self.with_buffer(|b| b.copy(view_id)) {
+            clipboard.set_text(&text);
+        }
+    }
+
     fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
         debug!(
             "key press keyval={:?}, state={:?}, uc={:?}",
@@ -946,7 +959,7 @@ impl CodeViewTextPrivate {
                             self.with_buffer_mut(|b| b.select_all(view_id));
                         }
                         'c' if ctrl => {
-                            // self.do_copy(state);
+                            self.do_copy(state);
                         }
                         'f' if ctrl => {
                             // self.start_search(state);

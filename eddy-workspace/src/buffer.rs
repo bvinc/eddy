@@ -1126,9 +1126,14 @@ impl Buffer {
         ret
     }
 
-    pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
+    pub fn copy(&self, view_id: ViewId) -> Option<String> {
         let mut ret = String::new();
-        for i in 0..self.selections.entry(view_id).or_default().sels.len() {
+        for i in 0..self
+            .selections
+            .get(&view_id)
+            .map(|s| s.sels.len())
+            .unwrap_or_default()
+        {
             let sel = self.selections.get(&view_id).unwrap().sels[i];
             if !sel.is_caret() {
                 // Just remove the selection
