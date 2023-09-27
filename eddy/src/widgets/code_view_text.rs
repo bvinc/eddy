@@ -802,7 +802,7 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn do_copy(&self, state: ModifierType) {
+    fn do_copy(&self, _state: ModifierType) {
         let Some(display) = gdk::Display::default() else {
             return;
         };
@@ -811,6 +811,19 @@ impl CodeViewTextPrivate {
         let view_id = self.view_id.get();
 
         if let Some(text) = self.with_buffer(|b| b.copy(view_id)) {
+            clipboard.set_text(&text);
+        }
+    }
+
+    fn do_cut(&self, _state: ModifierType) {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let clipboard = gdk::Display::clipboard(&display);
+
+        let view_id = self.view_id.get();
+
+        if let Some(text) = self.with_buffer_mut(|b| b.cut(view_id)) {
             clipboard.set_text(&text);
         }
     }
@@ -974,7 +987,7 @@ impl CodeViewTextPrivate {
                             // TODO new tab
                         }
                         'x' if ctrl => {
-                            // self.do_cut(state);
+                            self.do_cut(state);
                         }
                         'z' if ctrl => {
                             self.with_buffer_mut(|b| b.undo(view_id));
