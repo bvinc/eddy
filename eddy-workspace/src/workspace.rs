@@ -300,9 +300,6 @@ impl Workspace {
     pub fn copy(&mut self, view_id: ViewId) -> Option<String> {
         self.buffer_mut(view_id).copy(view_id)
     }
-    pub fn paste(&mut self, view_id: ViewId) {
-        self.buffer_mut(view_id).paste(view_id);
-    }
 
     pub fn gesture_point_select(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         self.buffer_mut(view_id)

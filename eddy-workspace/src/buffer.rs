@@ -1152,8 +1152,6 @@ impl Buffer {
         }
     }
 
-    pub fn paste(&mut self, _view_id: ViewId) {}
-
     pub fn drag_update(&mut self, view_id: ViewId, line_idx: usize, line_byte_idx: usize) {
         let rope = &self.rope;
         let sels = self.selections.entry(view_id).or_default();

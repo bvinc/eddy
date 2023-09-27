@@ -7,6 +7,7 @@ use eddy_workspace::style::{Attr, AttrSpan, Color};
 use eddy_workspace::{Buffer, Selection};
 use gdk::{Key, ModifierType};
 use gflux::ComponentCtx;
+use gio::Cancellable;
 use glib::{clone, ParamSpec, Propagation};
 use gtk::glib::subclass;
 use gtk::prelude::*;
@@ -802,6 +803,19 @@ impl CodeViewTextPrivate {
         }
     }
 
+    fn do_cut(&self, _state: ModifierType) {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let clipboard = gdk::Display::clipboard(&display);
+
+        let view_id = self.view_id.get();
+
+        if let Some(text) = self.with_buffer_mut(|b| b.cut(view_id)) {
+            clipboard.set_text(&text);
+        }
+    }
+
     fn do_copy(&self, _state: ModifierType) {
         let Some(display) = gdk::Display::default() else {
             return;
@@ -815,17 +829,22 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn do_cut(&self, _state: ModifierType) {
+    fn do_paste(&self, _state: ModifierType) {
         let Some(display) = gdk::Display::default() else {
             return;
         };
         let clipboard = gdk::Display::clipboard(&display);
 
         let view_id = self.view_id.get();
-
-        if let Some(text) = self.with_buffer_mut(|b| b.cut(view_id)) {
-            clipboard.set_text(&text);
-        }
+        let ctx = self.ctx.get().unwrap().clone();
+        clipboard.read_text_async(
+            Cancellable::NONE,
+            clone!(@strong ctx => move |res| {
+                if let Ok(Some(s)) = res {
+                    ctx.with_model_mut(|ws| ws.buffer_mut(view_id).insert(view_id, s.as_str()))
+                }
+            }),
+        );
     }
 
     fn key_pressed(&self, key: Key, _keycode: u32, state: ModifierType) {
@@ -978,7 +997,7 @@ impl CodeViewTextPrivate {
                             // self.start_search(state);
                         }
                         'v' if ctrl => {
-                            // self.do_paste(state);
+                            self.do_paste(state);
                         }
                         's' if ctrl => {
                             self.with_buffer_mut(|b| b.save());
