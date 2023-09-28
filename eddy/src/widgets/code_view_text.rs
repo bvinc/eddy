@@ -531,6 +531,7 @@ impl CodeViewTextPrivate {
 
     fn drag_end(&self, _cvt: &CodeViewText) {
         self.with_buffer_mut(|b| b.drag_end(self.view_id.get()));
+        self.do_copy_primary();
     }
 
     /// Determines how many lines page up or down should use
@@ -803,7 +804,7 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn do_cut(&self, _state: ModifierType) {
+    fn do_cut(&self) {
         let Some(display) = gdk::Display::default() else {
             return;
         };
@@ -816,7 +817,7 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn do_copy(&self, _state: ModifierType) {
+    fn do_copy(&self) {
         let Some(display) = gdk::Display::default() else {
             return;
         };
@@ -829,7 +830,20 @@ impl CodeViewTextPrivate {
         }
     }
 
-    fn do_paste(&self, _state: ModifierType) {
+    fn do_copy_primary(&self) {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let clipboard = gdk::Display::primary_clipboard(&display);
+
+        let view_id = self.view_id.get();
+
+        if let Some(text) = self.with_buffer(|b| b.copy(view_id)) {
+            clipboard.set_text(&text);
+        }
+    }
+
+    fn do_paste(&self) {
         let Some(display) = gdk::Display::default() else {
             return;
         };
@@ -991,13 +1005,13 @@ impl CodeViewTextPrivate {
                             self.with_buffer_mut(|b| b.select_all(view_id));
                         }
                         'c' if ctrl => {
-                            self.do_copy(state);
+                            self.do_copy();
                         }
                         'f' if ctrl => {
                             // self.start_search(state);
                         }
                         'v' if ctrl => {
-                            self.do_paste(state);
+                            self.do_paste();
                         }
                         's' if ctrl => {
                             self.with_buffer_mut(|b| b.save());
@@ -1006,7 +1020,7 @@ impl CodeViewTextPrivate {
                             // TODO new tab
                         }
                         'x' if ctrl => {
-                            self.do_cut(state);
+                            self.do_cut();
                         }
                         'z' if ctrl => {
                             self.with_buffer_mut(|b| b.undo(view_id));
