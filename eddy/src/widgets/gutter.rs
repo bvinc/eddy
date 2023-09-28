@@ -237,6 +237,7 @@ impl GutterPrivate {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn append_text_to_snapshot(
         &self,
         cv: &Gutter,

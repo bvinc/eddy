@@ -7,7 +7,7 @@ pub struct ParseColorError;
 impl std::error::Error for ParseColorError {}
 
 impl fmt::Display for ParseColorError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "color parse error")
     }
 }

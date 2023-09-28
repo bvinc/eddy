@@ -36,8 +36,8 @@ pub struct Theme {
     highlights: HashMap<Capture, ThemeAttributes>,
 }
 
-impl Theme {
-    pub fn new() -> Theme {
+impl Default for Theme {
+    fn default() -> Self {
         Self::from_str(
             r##"
 fg     = "#fdf4c1"
@@ -70,11 +70,14 @@ line_number = {fg = "#7c6f64"}
 "type.builtin"          = {fg = "#fe8019"}
 "variable.builtin"      = {fg = "#fe8019"}
 "variable.parameter"    = {fg = "#83a598"}
-        "##,
+"##,
         )
         .unwrap()
     }
-    pub fn from_str(s: &str) -> Result<Theme, Box<dyn Error>> {
+}
+impl FromStr for Theme {
+    type Err = Box<dyn Error>;
+    fn from_str(s: &str) -> Result<Theme, Box<dyn Error>> {
         let tf: ThemeFile = toml::from_str(s)?;
         let gutter = ThemeAttributes::from_file_attrs(tf.gutter);
         let gutter_line_highlight = ThemeAttributes::from_file_attrs(tf.gutter_line_highlight);
@@ -99,6 +102,8 @@ line_number = {fg = "#7c6f64"}
             highlights,
         })
     }
+}
+impl Theme {
     pub fn attributes(&self, c: Capture) -> Option<ThemeAttributes> {
         self.highlights.get(&c).map(|a| *a)
     }

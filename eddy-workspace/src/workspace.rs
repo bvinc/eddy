@@ -30,11 +30,12 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             views: BTreeMap::new(),
             buffers: BTreeMap::new(),
-            theme: Theme::new(),
+            theme: Theme::default(),
             ls_client: None,
             dir: std::env::current_dir().expect("cwd"),
             focused_view: None,

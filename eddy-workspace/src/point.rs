@@ -1,5 +1,5 @@
 /// Represents a point in the buffer
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Point {
     /// The total byte index
     pub byte: usize,
@@ -9,15 +9,4 @@ pub struct Point {
     pub line: usize,
     /// The number of code points from the beginning of the line
     pub col: usize,
-}
-
-impl Default for Point {
-    fn default() -> Self {
-        Self {
-            byte: 0,
-            char: 0,
-            line: 0,
-            col: 0,
-        }
-    }
 }

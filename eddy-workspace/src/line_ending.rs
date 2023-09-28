@@ -2,17 +2,17 @@ use std::borrow::Cow;
 
 #[derive(Debug)]
 pub enum LineEnding {
-    LF,
-    CR,
-    CRLF,
+    Lf,
+    Cr,
+    Crlf,
 }
 
 impl LineEnding {
     pub fn normalize<'a>(&self, s: &'a str) -> Cow<'a, str> {
         match self {
-            LineEnding::LF => normalize(s, "\n"),
-            LineEnding::CR => normalize(s, "\r"),
-            LineEnding::CRLF => normalize(s, "\r\n"),
+            LineEnding::Lf => normalize(s, "\n"),
+            LineEnding::Cr => normalize(s, "\r"),
+            LineEnding::Crlf => normalize(s, "\r\n"),
         }
     }
 }

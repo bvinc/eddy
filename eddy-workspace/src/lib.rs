@@ -23,4 +23,5 @@ pub use range::*;
 pub use selection::*;
 pub use workspace::*;
 
+#[derive(Debug)]
 pub enum Command {}

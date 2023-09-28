@@ -1,25 +1,3 @@
-use std::collections::HashMap;
-
-pub struct Layout {
-    lines: HashMap<usize, LayoutLine>,
-}
-
-impl Layout {
-    pub fn new() -> Layout {
-        Self {
-            lines: HashMap::new(),
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.lines.clear();
-    }
-
-    pub fn insert(&mut self, line_num: usize, line: LayoutLine) {
-        self.lines.insert(line_num, line);
-    }
-}
-
 pub struct LayoutLine {
     pub items: Vec<LayoutItem>,
 }
