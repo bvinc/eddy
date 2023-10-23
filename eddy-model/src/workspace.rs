@@ -193,7 +193,7 @@ impl Workspace {
 
     pub fn buffer(&self, view_id: usize) -> &Buffer {
         let buf_id = self.views.get(&view_id).unwrap();
-        self.buffers.get(buf_id).unwrap().clone()
+        self.buffers.get(buf_id).unwrap()
     }
 
     pub fn buffer_mut(&mut self, view_id: usize) -> &mut Buffer {
@@ -203,10 +203,7 @@ impl Workspace {
 
     pub fn buffer_and_theme(&self, view_id: usize) -> (&Buffer, Theme) {
         let buf_id = self.views.get(&view_id).unwrap();
-        (
-            self.buffers.get(buf_id).unwrap().clone(),
-            self.theme.clone(),
-        )
+        (self.buffers.get(buf_id).unwrap(), self.theme.clone())
     }
 
     pub fn buffer_and_theme_mut(&mut self, view_id: usize) -> (&mut Buffer, Theme) {
