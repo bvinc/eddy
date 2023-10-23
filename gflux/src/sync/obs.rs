@@ -1,6 +1,6 @@
 use std::fmt;
 
-type Callback<T> = Box<dyn Fn(&T)>;
+type Callback<T> = Box<dyn Fn(&T) + Send + Sync>;
 
 pub struct Obs<T> {
     value: T,
@@ -24,7 +24,7 @@ impl<T> Obs<T> {
         &mut self.value
     }
 
-    pub fn observe<F: 'static + Fn(&T)>(&mut self, callback: F) {
+    pub fn observe<F: 'static + Fn(&T) + Send + Sync>(&mut self, callback: F) {
         self.callbacks.push(Box::new(callback));
     }
 

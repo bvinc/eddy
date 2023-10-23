@@ -1,12 +1,59 @@
 use anyhow::bail;
 use eddy_workspace::Workspace;
 use gflux::{Component, ComponentCtx};
+use gio::subclass::prelude::*;
+use glib::subclass::prelude::*;
 use glib::{clone, Propagation};
 use gtk::prelude::*;
 use log::*;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod imp {
+    use gio::subclass::prelude::*;
+    use glib::subclass::prelude::*;
+    use glib::StaticType;
+
+    #[derive(Default)]
+    pub struct MyModel {
+        // Your data storage here.
+        // Possibly a RefCell<Box<dyn YourDataStructure>> or similar
+    }
+
+    // Object subclass implementation
+    #[glib::object_subclass]
+    impl ObjectSubclass for MyModel {
+        const NAME: &'static str = "MyModel";
+        type Type = super::MyModel;
+        type ParentType = glib::Object;
+    }
+
+    impl ObjectImpl for MyModel {}
+    impl ListModelImpl for MyModel {
+        fn item_type(&self) -> glib::Type {
+            String::static_type()
+        }
+
+        fn n_items(&self) -> u32 {
+            // self.items.borrow().len() as u32
+            0
+        }
+
+        fn item(&self, position: u32) -> Option<glib::Object> {
+            None
+            // self.items
+            //     .borrow()
+            //     .get(position as usize)
+            //     .map(|item| item.to_value().get::<glib::Object>().unwrap())
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct MyModel(ObjectSubclass<imp::MyModel>)
+        @implements gio::ListModel;
+}
 
 #[allow(dead_code)]
 pub struct DirBarComponent {
@@ -44,7 +91,7 @@ impl Component for DirBarComponent {
                 let dir = ctx.with_model(|ws| ws.dir.clone());
 
                 if let Ok(path) = tree_path_to_path(Some(&dir), &tree_store, tp) {
-                    if let Err(e) = refresh_dir(&tree_store, Some(ti), &path) {
+                    if let Err(e) = refresh_dir(&ctx, &tree_store, Some(ti), &path) {
                         warn!("{}", e);
                     }
                 }
@@ -87,7 +134,7 @@ impl Component for DirBarComponent {
         let dir = ctx.with_model(|ws| ws.dir.clone());
 
         // TODO be able to show an error if one happens
-        let _ = refresh_dir(&tree_store, None, &dir);
+        let _ = refresh_dir(&ctx, &tree_store, None, &dir);
 
         Self {
             tree_view,
@@ -99,6 +146,7 @@ impl Component for DirBarComponent {
 /// Given a path in the tree, clear it of its children, and re-read the
 /// files from the disk.
 pub fn refresh_dir(
+    ctx: &ComponentCtx<DirBarComponent>,
     tree_store: &gtk::TreeStore,
     ti: Option<&gtk::TreeIter>,
     path: &Path,
@@ -108,7 +156,17 @@ pub fn refresh_dir(
     clear_tree_iter_children(tree_store, ti);
 
     let mut files = vec![];
+
     dbg!(&path);
+    ctx.with_model_mut(|ws| {
+        ws.backend.list_files(
+            path,
+            Box::new(|files| {
+                dbg!(files);
+            }),
+        )
+    });
+
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         dbg!(&entry);

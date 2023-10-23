@@ -4,17 +4,12 @@
 #![warn(rustdoc::all)]
 #![warn(missing_debug_implementations)]
 
-use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
-use std::fmt;
-use std::rc::{Rc, Weak};
-
-mod revisioned;
-pub mod sync;
-pub use revisioned::*;
-
 mod obs;
 pub use obs::*;
+
+use std::collections::{BTreeSet, HashMap};
+use std::fmt;
+use std::sync::{Arc, RwLock, Weak};
 
 /// The trait that defines a component
 pub trait Component {
@@ -38,9 +33,9 @@ pub trait Component {
 
 /// Manages the component tree
 pub struct ComponentTree<M> {
-    global: Rc<RefCell<Obs<M>>>,
-    comp_table: Rc<RefCell<ComponentTable>>,
-    roots: Rc<RefCell<BTreeSet<ComponentId>>>,
+    global: Arc<RwLock<Obs<M>>>,
+    comp_table: Arc<RwLock<ComponentTable>>,
+    roots: Arc<RwLock<BTreeSet<ComponentId>>>,
 }
 
 impl<M: fmt::Debug> fmt::Debug for ComponentTree<M> {
@@ -63,20 +58,21 @@ impl<M> Clone for ComponentTree<M> {
 }
 
 impl<M> ComponentTree<M> {
-    pub fn new(global: Rc<RefCell<Obs<M>>>) -> Self {
+    pub fn new(global: Arc<RwLock<Obs<M>>>) -> Self {
         Self {
             global,
-            comp_table: Rc::new(RefCell::new(ComponentTable::new())),
-            roots: Rc::new(RefCell::new(BTreeSet::new())),
+            comp_table: Arc::new(RwLock::new(ComponentTable::new())),
+            roots: Arc::new(RwLock::new(BTreeSet::new())),
         }
     }
 
     /// Execute rebuild on every dirty component, and their ancestors, from the top down.
     pub fn exec_rebuilds(&self) {
         // clean up dead components from root list
-        self.roots.borrow_mut().retain(|cid| {
+        self.roots.write().unwrap().retain(|cid| {
             self.comp_table
-                .borrow()
+                .read()
+                .unwrap()
                 .map
                 .get(cid)
                 .and_then(|wr| wr.upgrade())
@@ -84,15 +80,16 @@ impl<M> ComponentTree<M> {
         });
 
         // Execute rebuild on all roots
-        for cid in &*self.roots.borrow() {
+        for cid in &*self.roots.read().unwrap() {
             let c = self
                 .comp_table
-                .borrow()
+                .read()
+                .unwrap()
                 .map
                 .get(cid)
                 .and_then(|wr| wr.upgrade());
             if let Some(c) = c {
-                c.borrow_mut().rebuild();
+                c.write().unwrap().rebuild();
             }
         }
     }
@@ -109,30 +106,31 @@ impl<M> ComponentTree<M> {
         L: Fn(&C::GlobalModel) -> &C::Model + 'static,
         LM: Fn(&mut C::GlobalModel) -> &mut C::Model + 'static,
     {
-        let id = self.comp_table.borrow_mut().reserve_id();
+        let id = self.comp_table.write().unwrap().reserve_id();
         let mut ctx = ComponentCtx {
             global: self.global.clone(),
             comp_table: self.comp_table.clone(),
             id,
             parent_id: None,
-            children: Rc::new(RefCell::new(BTreeSet::new())),
-            lens: Rc::new(lens),
-            lens_mut: Rc::new(lens_mut),
+            children: Arc::new(RwLock::new(BTreeSet::new())),
+            lens: Arc::new(lens),
+            lens_mut: Arc::new(lens_mut),
         };
 
         let mut component = C::build(ctx.clone(), params);
         component.rebuild(ctx.clone());
-        let c = Rc::new(RefCell::new(ComponentBase {
+        let c = Arc::new(RwLock::new(ComponentBase {
             ctx: ctx.clone(),
             component,
         }));
 
         ctx.id = ctx
             .comp_table
-            .borrow_mut()
-            .insert(id, Rc::downgrade(&c) as WeakComponentBase);
+            .write()
+            .unwrap()
+            .insert(id, Arc::downgrade(&c) as WeakComponentBase);
 
-        self.roots.borrow_mut().insert(id);
+        self.roots.write().unwrap().insert(id);
 
         ComponentHandle { inner: c }
     }
@@ -171,19 +169,19 @@ impl ComponentTable {
 /// Handle for a component
 #[derive(Debug)]
 pub struct ComponentHandle<C: Component> {
-    inner: Rc<RefCell<ComponentBase<C>>>,
+    inner: Arc<RwLock<ComponentBase<C>>>,
 }
 
 impl<C: Component> ComponentHandle<C> {
     /// Returns the root widget
     pub fn widget(&self) -> C::Widget {
-        self.inner.borrow().component.widget()
+        self.inner.read().unwrap().component.widget()
     }
 
     /// Rebuilds the component.  You shouldn't need to call this manually if
     /// you've mutated this component's state using its `ComponentCtx`.
     pub fn rebuild(&self) {
-        self.inner.borrow_mut().rebuild()
+        self.inner.write().unwrap().rebuild()
     }
 }
 
@@ -207,7 +205,7 @@ impl<C: Component> ComponentBaseTrait for ComponentBase<C> {
 
 impl<C: Component> Drop for ComponentBase<C> {
     fn drop(&mut self) {
-        self.ctx.comp_table.borrow_mut().destroy(self.ctx.id);
+        self.ctx.comp_table.write().unwrap().destroy(self.ctx.id);
     }
 }
 
@@ -218,18 +216,18 @@ trait ComponentBaseTrait {
 }
 
 type ComponentId = u64;
-type WeakComponentBase = Weak<RefCell<dyn ComponentBaseTrait>>;
+type WeakComponentBase = Weak<RwLock<dyn ComponentBaseTrait>>;
 
 /// Performs bookkeeping for the component, and provides state accessor methods
 pub struct ComponentCtx<C: Component + ?Sized> {
     id: ComponentId,
     parent_id: Option<ComponentId>,
-    children: Rc<RefCell<BTreeSet<ComponentId>>>,
+    children: Arc<RwLock<BTreeSet<ComponentId>>>,
 
-    global: Rc<RefCell<Obs<C::GlobalModel>>>,
-    comp_table: Rc<RefCell<ComponentTable>>,
-    lens: Rc<dyn Fn(&C::GlobalModel) -> &C::Model>,
-    lens_mut: Rc<dyn Fn(&mut C::GlobalModel) -> &mut C::Model>,
+    global: Arc<RwLock<Obs<C::GlobalModel>>>,
+    comp_table: Arc<RwLock<ComponentTable>>,
+    lens: Arc<dyn Fn(&C::GlobalModel) -> &C::Model>,
+    lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut C::Model>,
 }
 
 impl<C: Component + fmt::Debug> fmt::Debug for ComponentCtx<C> {
@@ -273,18 +271,18 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
         K::GlobalModel: 'static,
     {
         let p_lens = self.lens.clone();
-        let child_lens: Rc<dyn Fn(&C::GlobalModel) -> &K::Model> =
-            Rc::new(move |g| p_to_c(p_lens(g)));
+        let child_lens: Arc<dyn Fn(&C::GlobalModel) -> &K::Model> =
+            Arc::new(move |g| p_to_c(p_lens(g)));
 
         let p_lens_mut = self.lens_mut.clone();
-        let child_lens_mut: Rc<dyn Fn(&mut C::GlobalModel) -> &mut K::Model> =
-            Rc::new(move |g| p_to_c_mut(p_lens_mut(g)));
+        let child_lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut K::Model> =
+            Arc::new(move |g| p_to_c_mut(p_lens_mut(g)));
 
-        let id = self.comp_table.borrow_mut().reserve_id();
+        let id = self.comp_table.write().unwrap().reserve_id();
         let mut ctx = ComponentCtx {
             id,
             parent_id: Some(self.id),
-            children: Rc::new(RefCell::new(BTreeSet::new())),
+            children: Arc::new(RwLock::new(BTreeSet::new())),
             comp_table: self.comp_table.clone(),
             global: self.global.clone(),
             lens: child_lens,
@@ -292,26 +290,28 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
         };
         let mut component = K::build(ctx.clone(), params);
         component.rebuild(ctx.clone());
-        let c = Rc::new(RefCell::new(ComponentBase {
+        let c = Arc::new(RwLock::new(ComponentBase {
             ctx: ctx.clone(),
             component,
         }));
 
         ctx.id = ctx
             .comp_table
-            .borrow_mut()
-            .insert(id, Rc::downgrade(&c) as WeakComponentBase);
+            .write()
+            .unwrap()
+            .insert(id, Arc::downgrade(&c) as WeakComponentBase);
 
-        self.children.borrow_mut().insert(id);
+        self.children.write().unwrap().insert(id);
 
         ComponentHandle { inner: c }
     }
 
     pub fn rebuild_children(&self) {
         // Clean up dead components from root list
-        self.children.borrow_mut().retain(|cid| {
+        self.children.write().unwrap().retain(|cid| {
             self.comp_table
-                .borrow()
+                .read()
+                .unwrap()
                 .map
                 .get(cid)
                 .and_then(|wr| wr.upgrade())
@@ -319,29 +319,30 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
         });
 
         // Execute rebuild, then rebuild_children
-        for cid in &*self.children.borrow() {
+        for cid in &*self.children.read().unwrap() {
             let c = self
                 .comp_table
-                .borrow()
+                .read()
+                .unwrap()
                 .map
                 .get(cid)
                 .and_then(|wr| wr.upgrade());
             if let Some(c) = c {
-                c.borrow_mut().rebuild();
+                c.write().unwrap().rebuild();
             }
         }
     }
 
     /// Access the component state
     pub fn with_model<R, F: Fn(&C::Model) -> R>(&self, f: F) -> R {
-        let global = self.global.borrow();
+        let global = self.global.read().unwrap();
         let lens = self.lens.clone();
         f(lens(global.get()))
     }
 
     /// Access the component state mutably, marks the component as dirty.
     pub fn with_model_mut<R, F: Fn(&mut C::Model) -> R>(&self, f: F) -> R {
-        let mut global = self.global.borrow_mut();
+        let mut global = self.global.write().unwrap();
         let lens_mut = self.lens_mut.clone();
         f(lens_mut(global.get_mut()))
     }

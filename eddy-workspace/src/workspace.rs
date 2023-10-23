@@ -1,3 +1,4 @@
+use crate::backend::Backend;
 use crate::lsp::{self, LanguageServerClient, ResultQueue};
 use crate::style::{AttrSpan, Theme};
 use crate::Buffer;
@@ -8,18 +9,23 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
+use std::fmt;
 use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::rc::Rc;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use url::Url;
 
 pub type BufferId = usize;
 pub type ViewId = usize;
 
-#[derive(Debug)]
+// pub struct JoinHandle<R>{};
+
 pub struct Workspace {
     pub views: BTreeMap<ViewId, BufferId>,
     buffers: BTreeMap<BufferId, Buffer>,
@@ -27,11 +33,26 @@ pub struct Workspace {
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
     pub dir: PathBuf,
     pub focused_view: Option<ViewId>,
+    pub wakeup: Arc<dyn Fn() + Send + Sync>,
+    pub backend: Backend,
+}
+
+impl fmt::Debug for Workspace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Workspace")
+            .field("views", &self.views)
+            .field("buffers", &self.buffers)
+            .field("theme", &self.theme)
+            .field("ls_client", &self.ls_client)
+            .field("dir", &self.dir)
+            .field("focused_view", &self.focused_view)
+            .finish()
+    }
 }
 
 impl Workspace {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(wakeup: Arc<dyn Fn() + Send + Sync>) -> Self {
         Self {
             views: BTreeMap::new(),
             buffers: BTreeMap::new(),
@@ -39,10 +60,18 @@ impl Workspace {
             ls_client: None,
             dir: std::env::current_dir().expect("cwd"),
             focused_view: None,
+            wakeup: wakeup.clone(),
+            backend: Backend::ssh("brain", "127.0.0.1:22", None, wakeup),
         }
     }
 
     pub fn new_view(&mut self, path: Option<&Path>) -> Result<ViewId, anyhow::Error> {
+        println!("new view");
+        self.backend.list_files(
+            &PathBuf::from_str("/").unwrap(),
+            Box::new(|s| println!("hi {:?}", s)),
+        );
+
         let view_id = self.views.keys().max().copied().unwrap_or_default() + 1;
         let buf_id = self.buffers.keys().max().copied().unwrap_or_default() + 1;
         self.views.insert(view_id, buf_id);
@@ -110,6 +139,37 @@ impl Workspace {
             self.focused_view = None;
         }
     }
+
+    pub fn have_events(&mut self) {
+        self.backend.handle_responses();
+    }
+
+    pub fn handle_events(&mut self) {
+        self.backend.handle_responses();
+    }
+
+    // pub async fn list_files(&self) -> Result<Vec<String>, anyhow::Error> {
+    //     for entry in tokio::fs::read_dir(self.dir).await? {
+    //         let entry = entry?;
+    //         dbg!(&entry);
+    //         let metadata = entry.metadata()?;
+    //         files.push((metadata.is_dir(), entry.file_name()));
+    //     }
+
+    //     files.sort_unstable_by_key(|(is_dir, fname)| {
+    //         (!is_dir, fname.to_string_lossy().to_uppercase())
+    //     });
+    //     for (is_dir, fname) in files {
+    //         let node = tree_store.insert_with_values(
+    //             ti,
+    //             None,
+    //             &[(0, &fname.to_string_lossy().to_string())],
+    //         );
+    //         if is_dir {
+    //             tree_store.insert_with_values(Some(&node), None, &[(0, &".")]);
+    //         }
+    //     }
+    // }
 
     pub fn display_name(&self, view_id: usize) -> String {
         let buf_id = self.views.get(&view_id).unwrap();
@@ -312,14 +372,14 @@ impl Workspace {
     }
 }
 
-mod test {
-    use super::*;
-    #[test]
-    fn test_views() {
-        let mut ws = Workspace::new();
-        let v1 = ws.new_view(None).unwrap();
-        ws.close_view(v1);
-        ws.new_view(None).unwrap();
-        dbg!(ws);
-    }
-}
+// mod test {
+//     use super::*;
+//     #[test]
+//     fn test_views() {
+//         let mut ws = Workspace::new();
+//         let v1 = ws.new_view(None).unwrap();
+//         ws.close_view(v1);
+//         ws.new_view(None).unwrap();
+//         dbg!(ws);
+//     }
+// }

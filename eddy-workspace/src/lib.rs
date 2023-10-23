@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![warn(missing_debug_implementations, rust_2018_idioms)]
 
+mod backend;
 mod buffer;
 pub(crate) mod graphemes;
 mod history;
