@@ -1,7 +1,7 @@
 use crate::components::gutter::GutterComponent;
 use crate::theme::Theme;
-use eddy_workspace::style::Color;
-use eddy_workspace::Buffer;
+use eddy_model::style::Color;
+use eddy_model::Buffer;
 
 use gflux::ComponentCtx;
 use glib::clone;

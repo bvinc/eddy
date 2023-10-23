@@ -3,8 +3,8 @@ use crate::components::code_view_text::CodeViewTextComponent;
 use crate::theme::Theme;
 use crate::widgets::layout::{LayoutItem, LayoutLine};
 use cairo::glib::{ParamSpecEnum, ParamSpecObject};
-use eddy_workspace::style::{Attr, AttrSpan, Color};
-use eddy_workspace::{Buffer, Selection};
+use eddy_model::style::{Attr, AttrSpan, Color};
+use eddy_model::{Buffer, Selection};
 use gdk::{Key, ModifierType};
 use gflux::ComponentCtx;
 use gio::Cancellable;
@@ -307,14 +307,14 @@ impl CodeViewTextPrivate {
     //         .with_model_mut(|ws| ws.buffer(self.view_id.get()))
     // }
 
-    // fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
+    // fn get_buffer_and_theme(&self) -> (Rc<RefCell<Buffer>>, eddy_model::style::Theme) {
     //     self.ctx
     //         .get()
     //         .unwrap()
     //         .with_model(|ws| ws.buffer_and_theme(self.view_id.get()))
     // }
 
-    // fn get_buffer_and_theme_mut(&self) -> (Rc<RefCell<Buffer>>, eddy_workspace::style::Theme) {
+    // fn get_buffer_and_theme_mut(&self) -> (Rc<RefCell<Buffer>>, eddy_model::style::Theme) {
     //     println!("get buffer and theme mut");
     //     self.ctx
     //         .get()

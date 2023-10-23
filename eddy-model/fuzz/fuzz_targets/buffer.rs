@@ -1,5 +1,5 @@
 #![no_main]
-use eddy_workspace::Buffer;
+use eddy_model::Buffer;
 use libfuzzer_sys::arbitrary;
 use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;

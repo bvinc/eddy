@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "eddy",
-  "eddy-workspace",
+  "eddy-model",
   "eddy-ts",
   "gflux",
   "wasm-test",

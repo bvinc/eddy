@@ -3,7 +3,7 @@ authors = ["Brian Vincent <brainn@gmail.com>"]
 edition = "2021"
 homepage = "https://github.com/bvinc/eddy"
 license = "MIT"
-name = "eddy-workspace"
+name = "eddy-model"
 version = "0.1.0"
 
 [dependencies]

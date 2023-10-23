@@ -1,5 +1,5 @@
 use super::window::WindowComponent;
-use eddy_workspace::Workspace;
+use eddy_model::Workspace;
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use glib::clone;
 use gtk::prelude::*;

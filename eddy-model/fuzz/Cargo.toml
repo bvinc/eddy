@@ -2,7 +2,7 @@
 [package]
 authors = ["Automatically generated"]
 edition = "2021"
-name = "eddy-workspace-fuzz"
+name = "eddy-model-fuzz"
 publish = false
 version = "0.0.0"
 
@@ -13,7 +13,7 @@ cargo-fuzz = true
 arbitrary = {version = "0.3.0", optional = true, features = ["derive"]}
 libfuzzer-sys = {version = "0.3.0", features = ["arbitrary-derive"]}
 
-[dependencies.eddy-workspace]
+[dependencies.eddy-model]
 path = ".."
 
 # Prevent this from interfering with workspaces

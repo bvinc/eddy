@@ -8,7 +8,7 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0"
 cairo-rs = "0.18"
-eddy-workspace = {path = "../eddy-workspace"}
+eddy-model = {path = "../eddy-model"}
 env_logger = "0.10"
 gflux = {path = "../gflux"}
 gio = "0.18"

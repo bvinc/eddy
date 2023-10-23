@@ -1,7 +1,7 @@
 // Get rid of this when my changes to pango get in
 #![allow(invalid_reference_casting)]
 use components::app::AppComponent;
-use eddy_workspace::Workspace;
+use eddy_model::Workspace;
 use gflux::{ComponentHandle, ComponentTree, Obs};
 use glib::{clone, ControlFlow, ExitCode, MainContext, Priority};
 use gtk::prelude::*;

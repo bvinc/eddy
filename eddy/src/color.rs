@@ -1,4 +1,4 @@
-use eddy_workspace::style::Color;
+use eddy_model::style::Color;
 use gtk::gdk;
 
 pub fn text_theme_to_gdk(c: Color) -> gdk::RGBA {

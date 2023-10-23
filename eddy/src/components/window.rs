@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use eddy_workspace::{ViewId, Workspace};
+use eddy_model::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use gio::SimpleAction;
 use glib::clone;

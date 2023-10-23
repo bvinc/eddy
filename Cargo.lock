@@ -136,7 +136,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cairo-rs",
- "eddy-workspace",
+ "eddy-model",
  "env_logger",
  "gflux",
  "gio",
@@ -157,15 +157,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eddy-ts"
-version = "0.1.0"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "eddy-workspace"
+name = "eddy-model"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -182,6 +174,14 @@ dependencies = [
  "toml 0.8.1",
  "unicode-segmentation",
  "url",
+]
+
+[[package]]
+name = "eddy-ts"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "tree-sitter",
 ]
 
 [[package]]

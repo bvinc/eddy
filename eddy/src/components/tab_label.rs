@@ -1,4 +1,4 @@
-use eddy_workspace::{ViewId, Workspace};
+use eddy_model::{ViewId, Workspace};
 use gflux::{Component, ComponentCtx};
 use glib::clone;
 use gtk::{prelude::*, Orientation};

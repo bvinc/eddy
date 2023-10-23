@@ -1,5 +1,5 @@
 use anyhow::bail;
-use eddy_workspace::Workspace;
+use eddy_model::Workspace;
 use gflux::{Component, ComponentCtx};
 use gio::subclass::prelude::*;
 use glib::subclass::prelude::*;
