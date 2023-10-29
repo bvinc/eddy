@@ -1,6 +1,6 @@
 use crate::widgets::gutter::Gutter;
 
-use eddy_model::{ViewId, Workspace};
+use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx};
 
 use gtk::prelude::*;
@@ -11,8 +11,8 @@ pub struct GutterComponent {
 }
 
 impl Component for GutterComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = Gutter;
     type Params = ViewId;
 

@@ -1,4 +1,4 @@
-use eddy_model::{ViewId, Workspace};
+use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx};
 use glib::clone;
 use gtk::{prelude::*, Orientation};
@@ -11,8 +11,8 @@ pub struct TabLabelComponent {
 }
 
 impl Component for TabLabelComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = gtk::Box;
     type Params = ViewId;
 

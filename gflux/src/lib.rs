@@ -307,6 +307,18 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
         ComponentHandle { inner: c }
     }
 
+    pub fn rebuild(&self) {
+        let maybe_c = self
+            .comp_table
+            .borrow()
+            .map
+            .get(&self.id)
+            .and_then(|wr| wr.upgrade());
+        if let Some(c) = maybe_c {
+            c.borrow_mut().rebuild()
+        };
+    }
+
     pub fn rebuild_children(&self) {
         // Clean up dead components from root list
         self.children.borrow_mut().retain(|cid| {
@@ -318,7 +330,7 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
                 .is_some()
         });
 
-        // Execute rebuild, then rebuild_children
+        // Execute rebuild on each child
         for cid in &*self.children.borrow() {
             let c = self
                 .comp_table

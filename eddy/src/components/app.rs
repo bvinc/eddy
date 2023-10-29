@@ -1,20 +1,21 @@
 use super::window::WindowComponent;
-use eddy_model::Workspace;
+use eddy_model::Model;
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use glib::clone;
 use gtk::prelude::*;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::{HashMap, HashSet};
 
 #[allow(dead_code)]
 pub struct AppComponent {
     app: gtk::Application,
-    win_components: Rc<RefCell<Vec<ComponentHandle<WindowComponent>>>>,
+    // win_components: Rc<RefCell<Vec<ComponentHandle<WindowComponent>>>>,
+    wins: HashMap<u64, ComponentHandle<WindowComponent>>,
+    last_wins: HashSet<u64>,
 }
 
 impl Component for AppComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Model;
     type Widget = gtk::Application;
     type Params = ();
 
@@ -27,24 +28,53 @@ impl Component for AppComponent {
             .application_id("com.github.bvinc.eddy")
             .build();
 
-        let win_components = Rc::new(RefCell::new(vec![]));
+        // let win_components = Rc::new(RefCell::new(vec![]));
 
-        app.connect_activate(clone!(@strong win_components => move |app| {
-            let c: ComponentHandle<WindowComponent> =
-                ctx.create_child(|s: &Workspace| s, |s: &mut Workspace| s, app.clone());
+        // app.connect_activate(clone!(@strong win_components => move |app| {
+        //     let c: ComponentHandle<WindowComponent> =
+        //         ctx.create_child(|s: &Model| s, |s: &mut Model| s, app.clone());
 
-            c.widget().present();
+        //     c.widget().present();
 
-            win_components.borrow_mut().push(c);
+        //     win_components.borrow_mut().push(c);
+        // }));
+
+        app.connect_activate(clone!(@strong ctx => move |_app| {
+            ctx.with_model_mut(|m| m.new_win());
+            ctx.rebuild();
         }));
 
         Self {
             app,
-            win_components,
+            wins: HashMap::new(),
+            last_wins: HashSet::new(),
         }
     }
 
     fn rebuild(&mut self, ctx: ComponentCtx<Self>) {
+        let wins: HashSet<u64> = ctx.with_model(|m| m.wins.keys().copied().collect());
+        let last_wins: HashSet<u64> = self.last_wins.clone();
+
+        // Remove old windows
+        for win_id in last_wins.difference(&wins) {
+            self.wins.remove(win_id);
+        }
+
+        // Add new windows
+        for win_id in wins.difference(&last_wins).copied() {
+            let c: ComponentHandle<WindowComponent> = ctx.create_child(
+                move |m: &Model| m.wins.get(&win_id).unwrap(),
+                move |m: &mut Model| m.wins.get_mut(&win_id).unwrap(),
+                self.app.clone(),
+            );
+
+            c.widget().present();
+
+            self.wins.insert(win_id, c);
+        }
+
+        self.last_wins = wins;
+
         ctx.rebuild_children();
     }
 }

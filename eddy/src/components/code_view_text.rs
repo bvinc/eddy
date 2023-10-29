@@ -1,6 +1,6 @@
 use crate::widgets::code_view_text::CodeViewText;
 
-use eddy_model::{ViewId, Workspace};
+use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx};
 
 use gtk::prelude::*;
@@ -12,8 +12,8 @@ pub struct CodeViewTextComponent {
 }
 
 impl Component for CodeViewTextComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = CodeViewText;
     type Params = ViewId;
 

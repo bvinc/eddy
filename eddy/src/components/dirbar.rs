@@ -1,5 +1,5 @@
 use anyhow::bail;
-use eddy_model::Workspace;
+use eddy_model::{Model, Window};
 use gflux::{Component, ComponentCtx};
 use gio::subclass::prelude::*;
 use glib::subclass::prelude::*;
@@ -62,8 +62,8 @@ pub struct DirBarComponent {
 }
 
 impl Component for DirBarComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = gtk::TreeView;
     type Params = ();
 
@@ -88,7 +88,7 @@ impl Component for DirBarComponent {
         tree_view.connect_test_expand_row(
             clone!(@strong ctx, @strong tree_store => move |_tv, ti, tp| {
                 dbg!("handle_test_expand_row");
-                let dir = ctx.with_model(|ws| ws.dir.clone());
+                let dir = ctx.with_model(|win| win.dir.clone());
 
                 if let Ok(path) = tree_path_to_path(Some(&dir), &tree_store, tp) {
                     if let Err(e) = refresh_dir(&ctx, &tree_store, Some(ti), &path) {
@@ -103,7 +103,7 @@ impl Component for DirBarComponent {
 
         tree_view.connect_row_activated(
             clone!(@strong ctx, @strong tree_store => move |tv, tp, _tvc| {
-                let dir = ctx.with_model(|ws| ws.dir.clone());
+                let dir = ctx.with_model(|win| win.dir.clone());
                 if let Some(ref ti) = tree_store.iter(tp) {
                     if tree_store.iter_has_child(ti) {
                         if !tv.row_expanded(tp) {
@@ -121,7 +121,7 @@ impl Component for DirBarComponent {
                     Ok(path) => {
                         if let Ok(path) = path.canonicalize() {
                             dbg!(&path);
-                            ctx.with_model_mut(|ws| ws.new_view(Some(&path)));
+                            ctx.with_model_mut(|win| win.new_view(Some(&path)));
                         }
                     }
                     Err(e) => {
@@ -158,8 +158,8 @@ pub fn refresh_dir(
     let mut files = vec![];
 
     dbg!(&path);
-    ctx.with_model_mut(|ws| {
-        ws.backend.list_files(
+    ctx.with_model_mut(|win| {
+        win.backend.list_files(
             path,
             Box::new(|files| {
                 dbg!(files);

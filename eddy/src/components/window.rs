@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use eddy_model::{ViewId, Workspace};
+use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use gio::SimpleAction;
 use glib::clone;
@@ -43,8 +43,8 @@ impl WindowComponent {
 }
 
 impl Component for WindowComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = gtk::ApplicationWindow;
     type Params = gtk::Application;
 
@@ -88,6 +88,7 @@ impl Component for WindowComponent {
         sidebar_paned.set_resize_end_child(true);
         sidebar_paned.set_shrink_end_child(false);
 
+        dbg!("creating app window", &app);
         // Create a window and set the title
         let window = ApplicationWindow::builder()
             .application(&app)

@@ -26,20 +26,19 @@ pub type ViewId = usize;
 
 // pub struct JoinHandle<R>{};
 
-pub struct Workspace {
+pub struct Window {
     pub views: BTreeMap<ViewId, BufferId>,
     buffers: BTreeMap<BufferId, Buffer>,
     pub theme: Theme,
     ls_client: Option<Arc<Mutex<LanguageServerClient>>>,
     pub dir: PathBuf,
     pub focused_view: Option<ViewId>,
-    pub wakeup: Arc<dyn Fn() + Send + Sync>,
     pub backend: Backend,
 }
 
-impl fmt::Debug for Workspace {
+impl fmt::Debug for Window {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Workspace")
+        f.debug_struct("Window")
             .field("views", &self.views)
             .field("buffers", &self.buffers)
             .field("theme", &self.theme)
@@ -50,7 +49,7 @@ impl fmt::Debug for Workspace {
     }
 }
 
-impl Workspace {
+impl Window {
     #[allow(clippy::new_without_default)]
     pub fn new(wakeup: Arc<dyn Fn() + Send + Sync>) -> Self {
         Self {
@@ -60,7 +59,6 @@ impl Workspace {
             ls_client: None,
             dir: std::env::current_dir().expect("cwd"),
             focused_view: None,
-            wakeup: wakeup.clone(),
             backend: Backend::ssh("brain", "127.0.0.1:22", None, wakeup),
         }
     }
@@ -373,7 +371,7 @@ impl Workspace {
 //     use super::*;
 //     #[test]
 //     fn test_views() {
-//         let mut ws = Workspace::new();
+//         let mut ws = Window::new();
 //         let v1 = ws.new_view(None).unwrap();
 //         ws.close_view(v1);
 //         ws.new_view(None).unwrap();

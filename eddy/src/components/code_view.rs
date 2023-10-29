@@ -1,7 +1,7 @@
 use super::code_view_text::CodeViewTextComponent;
 use super::gutter::GutterComponent;
 
-use eddy_model::{ViewId, Workspace};
+use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx, ComponentHandle};
 
 use gtk::prelude::*;
@@ -14,8 +14,8 @@ pub struct CodeViewComponent {
 }
 
 impl Component for CodeViewComponent {
-    type GlobalModel = Workspace;
-    type Model = Workspace;
+    type GlobalModel = Model;
+    type Model = Window;
     type Widget = gtk::Box;
     type Params = ViewId;
 
