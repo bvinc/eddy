@@ -14,7 +14,8 @@ gflux = {path = "../gflux"}
 gio = "0.18"
 glib = "0.18"
 gobject-sys = "0.18"
-gtk = {package = "gtk4", version = "0.7"}
+#gtk = {package = "gtk4", version = "0.7"}
+gtk = {package = "gtk4", version = "0.7", features = ["v4_14"]}
 gtk-macros = "0.3"
 lazy_static = "1.0"
 libc = "0.2"

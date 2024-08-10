@@ -24,6 +24,7 @@ pub struct WindowComponent {
     action_save_as: SimpleAction,
 
     dir_bar: ComponentHandle<DirBarComponent>,
+    dir_bar2: ComponentHandle<super::dirbar2::DirBarComponent>,
     code_views: HashMap<ViewId, ComponentHandle<CodeViewComponent>>,
     tab_labels: HashMap<ViewId, ComponentHandle<TabLabelComponent>>,
     notebook: gtk::Notebook,
@@ -69,10 +70,12 @@ impl Component for WindowComponent {
         header_bar.pack_start(&new_button);
         header_bar.pack_end(&menu_button);
 
+        let dir_bar_vbox = gtk::Box::new(Orientation::Vertical, 0);
         let dir_bar = ctx.create_child(|s| s, |s| s, ());
-        let sidebar_scrolled_window = gtk::ScrolledWindow::builder()
-            .child(&dir_bar.widget())
-            .build();
+        dir_bar_vbox.append(&dir_bar.widget());
+        let dir_bar2 = ctx.create_child(|s| s, |s| s, ());
+        dir_bar_vbox.append(&dir_bar2.widget());
+        let sidebar_scrolled_window = gtk::ScrolledWindow::builder().child(&dir_bar_vbox).build();
 
         let notebook = gtk::Notebook::new();
         let code_views = HashMap::new();
@@ -165,6 +168,7 @@ impl Component for WindowComponent {
             action_save,
             action_save_as,
             dir_bar,
+            dir_bar2,
             code_views,
             tab_labels,
             notebook,

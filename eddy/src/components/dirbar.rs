@@ -161,7 +161,7 @@ pub fn refresh_dir(
     ctx.with_model_mut(|win| {
         win.backend.list_files(
             path,
-            Box::new(|files| {
+            Box::new(|win, files| {
                 dbg!(files);
             }),
         )

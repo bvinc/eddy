@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 mod color;
 mod components;
+mod objects;
 mod theme;
 mod widgets;
 
@@ -65,6 +66,10 @@ fn main() -> ExitCode {
         clone!(@strong ctree, @strong model => move |_| {
             println!("MODEL I JUST WOKE UP");
             ctree.exec_rebuilds();
+
+            if model.borrow().get().has_events() {
+                model.borrow_mut().get_mut().handle_events();
+            }
             ControlFlow::Continue
         }),
     );

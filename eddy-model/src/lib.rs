@@ -4,12 +4,14 @@
 
 mod backend;
 mod buffer;
+pub mod files;
 pub(crate) mod graphemes;
 mod history;
 mod language;
 mod line_ending;
 mod lsp;
 mod point;
+mod project;
 mod range;
 mod selection;
 pub mod style;
@@ -65,5 +67,15 @@ impl Model {
         let win = Window::new(self.wakeup.clone());
         self.wins.insert(win_id, win);
         win_id
+    }
+
+    pub fn has_events(&self) -> bool {
+        self.wins.values().any(|w| w.has_events())
+    }
+
+    pub fn handle_events(&mut self) {
+        for win in self.wins.values_mut() {
+            win.handle_events();
+        }
     }
 }
