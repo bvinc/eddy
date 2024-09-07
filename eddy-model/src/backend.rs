@@ -12,7 +12,8 @@ use std::sync::mpsc::{
     channel, sync_channel, Receiver, RecvError, SendError, Sender, SyncSender, TryRecvError,
 };
 use std::sync::{mpsc, Arc, RwLock};
-use std::thread::{self, JoinHandle};
+use std::thread::{self, sleep, JoinHandle};
+use std::time::Duration;
 
 use gflux::sync::Obs;
 use log::error;
@@ -250,34 +251,56 @@ pub fn main_loop(
 ) -> Result<(), Box<dyn Error>> {
     dbg!("backend main loop");
     if let BackendConfig::Ssh { user, host, port } = config {
-        // Connect to the local SSH server
-        let tcp = dbg!(TcpStream::connect(host)?);
-        let mut sess = Session::new()?;
-        sess.set_tcp_stream(tcp);
-        sess.handshake()?;
-        sess.userauth_agent(&user)?;
-        assert!(sess.authenticated());
-
-        // execute a command
-        let mut chan = sess.channel_session()?;
-        chan.exec("ls")?;
-        let mut s = String::new();
-        chan.read_to_string(&mut s)?;
-        chan.wait_close()?;
-        println!("{}", s);
-
-        // list files with sftp
-        // let sftp = sess.sftp()?;
-        // let mut dir = sftp.opendir(Path::new("/"))?;
-        // while let Ok((file, stat)) = dir.readdir() {
-        //     println!("{} {:?}", file.display(), stat);
-        // }
-        // dbg!(dir.readdir());
-
         loop {
-            if let Err(e) = handle_backend_req(&wakeup, &req_receiver, &resp_sender, &sess) {
-                error!("backend req error: {}", e);
+            if let Err(e) =
+                ssh_do_main_loop(&user, &host, port, &wakeup, &req_receiver, &resp_sender)
+            {
+                error!("ssh: {}", e);
+                sleep(Duration::from_secs(1));
             }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn ssh_do_main_loop(
+    user: &str,
+    host: &str,
+    port: Option<u16>,
+    wakeup: &Arc<dyn Fn() + Send + Sync>,
+    req_receiver: &Receiver<(ReqId, BackendReq)>,
+    resp_sender: &SyncSender<(ReqId, BackendResp)>,
+) -> Result<(), Box<dyn Error>> {
+    dbg!("backend main loop");
+
+    // Connect to the local SSH server
+    let tcp = dbg!(TcpStream::connect(host.clone())?);
+    let mut sess = Session::new()?;
+    sess.set_tcp_stream(tcp);
+    sess.handshake()?;
+    sess.userauth_agent(&user)?;
+    assert!(sess.authenticated());
+
+    // execute a command
+    let mut chan = sess.channel_session()?;
+    chan.exec("ls")?;
+    let mut s = String::new();
+    chan.read_to_string(&mut s)?;
+    chan.wait_close()?;
+    println!("{}", s);
+
+    // list files with sftp
+    // let sftp = sess.sftp()?;
+    // let mut dir = sftp.opendir(Path::new("/"))?;
+    // while let Ok((file, stat)) = dir.readdir() {
+    //     println!("{} {:?}", file.display(), stat);
+    // }
+    // dbg!(dir.readdir());
+
+    loop {
+        if let Err(e) = handle_backend_req(&wakeup, &req_receiver, &resp_sender, &sess) {
+            error!("backend req error: {}", e);
         }
     }
 
