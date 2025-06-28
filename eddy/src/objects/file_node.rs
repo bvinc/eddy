@@ -6,11 +6,10 @@ use gtk::subclass::prelude::*;
 
 mod imp {
     use eddy_model::ProjectId;
-        use gio::subclass::prelude::*;
+    use gio::subclass::prelude::*;
     use std::cell::{Cell, RefCell};
     use std::path::PathBuf;
 
-    
     #[derive(Default)]
     pub struct FileNode {
         pub proj_name: RefCell<String>,

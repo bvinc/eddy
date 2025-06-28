@@ -20,6 +20,7 @@ use super::types::Callback;
 use crate::ViewId;
 use jsonrpc_lite::{Error, Id, JsonRpc, Params};
 use log::*;
+use lsp_types::Uri;
 use lsp_types::*;
 use serde_json::{to_value, Value};
 use std::collections::{HashMap, HashSet};
@@ -37,7 +38,7 @@ pub struct LanguageServerClient {
     pub status_items: HashSet<String>,
     // pub core: CoreProxy,
     pub is_initialized: bool,
-    pub opened_documents: HashMap<ViewId, Url>,
+    pub opened_documents: HashMap<ViewId, Uri>,
     pub server_capabilities: Option<ServerCapabilities>,
     pub file_extensions: Vec<String>,
 }
@@ -137,9 +138,7 @@ impl LanguageServerClient {
     }
 
     pub fn handle_notification(&mut self, method: &str, params: Params) {
-        trace!(
-            "Notification Received =>\n Method: {method}, params: {params:?}"
-        );
+        trace!("Notification Received =>\n Method: {method}, params: {params:?}");
         match method {
             "window/showMessage" => {}
             "window/logMessage" => {}
@@ -206,7 +205,7 @@ impl LanguageServerClient {
 impl LanguageServerClient {
     /// Send the Initialize Request given the Root URI of the
     /// Workspace. It is None for non-workspace projects.
-    pub fn send_initialize<CB>(&mut self, root_uri: Option<Url>, on_init: CB)
+    pub fn send_initialize<CB>(&mut self, root_uri: Option<Uri>, on_init: CB)
     where
         CB: 'static + Send + FnOnce(&mut LanguageServerClient, Result<Value, Error>),
     {
@@ -225,6 +224,9 @@ impl LanguageServerClient {
                 version: Some("0.1.0".into()),
             }),
             locale: None,
+            work_done_progress_params: lsp_types::WorkDoneProgressParams {
+                work_done_token: None,
+            },
         };
 
         let params = Params::from(serde_json::to_value(init_params).unwrap());
@@ -240,7 +242,7 @@ impl LanguageServerClient {
     }
 
     /// Send textDocument/didOpen Notification to the Language Server
-    pub fn send_did_open(&mut self, view_id: ViewId, document_uri: Url, document_text: String) {
+    pub fn send_did_open(&mut self, view_id: ViewId, document_uri: Uri, document_text: String) {
         self.opened_documents.insert(view_id, document_uri.clone());
 
         let text_document_did_open_params = DidOpenTextDocumentParams {

@@ -5,6 +5,7 @@ use crate::style::{AttrSpan, Theme};
 use crate::Buffer;
 use anyhow::Context;
 use log::debug;
+use lsp_types::Uri;
 use ropey::RopeSlice;
 use serde_json::Value;
 use std::borrow::BorrowMut;
@@ -116,10 +117,12 @@ impl Window {
                 //     "rust".into(),
                 //     vec!["rs".into()],
                 // );
-                let root_url = Url::parse(&format!("{}{}", "file://", "/home/brain/src/eddy-gtk4"))
-                    .expect("bad url");
+                let root_url =
+                    Uri::from_str(&format!("{}{}", "file://", "/home/brain/src/eddy-gtk4"))
+                        .expect("bad uri");
 
-                let document_uri = Url::from_file_path(path).expect("url from path");
+                let document_uri =
+                    Uri::from_str(&format!("file://{}", path.display())).expect("uri from path");
 
                 let document_text = buf.to_string();
                 ls_client.lock().expect("lock lsp").send_initialize(

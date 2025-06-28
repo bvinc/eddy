@@ -495,9 +495,9 @@ impl CodeViewTextPrivate {
         let _button = gc.current_button();
         let _event = gc.last_event(sequence.as_ref()).unwrap();
 
-        let _shift = gc.current_event().is_some_and(|ev| {
-            ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
-        });
+        let _shift = gc
+            .current_event()
+            .is_some_and(|ev| ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK));
         let ctrl = gc.current_event().is_some_and(|ev| {
             ev.modifier_state()
                 .contains(gdk::ModifierType::CONTROL_MASK)
