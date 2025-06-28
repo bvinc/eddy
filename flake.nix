@@ -35,16 +35,6 @@
         ];
       in
       {
-        # Build the crate with the pinned toolchain
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "eddy";
-          version = "0.1.0";
-          src = ./.;
-          cargoLock.lockFile = ./Cargo.lock; # delete if you don’t commit Cargo.lock
-          cargoSha256 = "0000000000000000000000000000000000000000000000000000";
-          nativeBuildInputs = [ rustToolchain ];
-        };
-
         # nix develop —> environment with Rust 1.88
         devShells.default = pkgs.mkShell {
           buildInputs = [
