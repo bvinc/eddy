@@ -328,12 +328,13 @@ impl Gutter {
     pub fn set_vadjust(&self, adj: &Adjustment) {
         let gutter_priv = GutterPrivate::from_obj(self);
         gutter_priv.vadj.replace(adj.clone());
-        gutter_priv
-            .vadj
-            .borrow()
-            .connect_value_changed(clone!(@weak self as gutter => move |_| {
+        gutter_priv.vadj.borrow().connect_value_changed(clone!(
+            #[weak(rename_to = gutter)]
+            self,
+            move |_| {
                 gutter.queue_draw();
-            }));
+            }
+        ));
     }
 }
 

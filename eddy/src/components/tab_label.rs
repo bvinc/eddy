@@ -25,9 +25,13 @@ impl Component for TabLabelComponent {
 
         let button = gtk::Button::new();
         button.set_icon_name("window-close");
-        button.connect_clicked(clone!(@strong ctx as ctx => move |_| {
-            ctx.with_model_mut(|ws| ws.close_view(view_id));
-        }));
+        button.connect_clicked(clone!(
+            #[strong]
+            ctx,
+            move |_| {
+                ctx.with_model_mut(|ws| ws.close_view(view_id));
+            }
+        ));
 
         let hbox = gtk::Box::new(Orientation::Horizontal, 8);
         hbox.append(&label);

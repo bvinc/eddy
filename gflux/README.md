@@ -56,7 +56,7 @@ impl Component for TaskComponent {
     // Called when the component is constructed
     fn build(ctx: ComponentCtx<Self>, params: ()) -> Self {
         let checkbox = gtk::CheckButton::new();
-        checkbox.connect_toggled(clone!(@strong ctx => move  |cb| {
+        checkbox.connect_toggled(clone!(#[strong] ctx, move  |cb| {
             ctx.with_model_mut(|task| task.done = cb.is_active());
         }));
   
@@ -121,8 +121,8 @@ With both of these methods, we can register the GTK main loop to always rebuild 
 // When the tree first moves from clean to dirty, use `idle_add_local_once`
 // to make sure that `ctree.rebuild_changed()` later gets called from the gtk
 // main loop
-ctree.on_first_change(clone!(@strong ctree => move || {
-    glib::source::idle_add_local_once(clone!(@strong ctree => move || ctree.rebuild_changed()));
+ctree.on_first_change(clone!(#[strong] ctree, move || {
+    glib::source::idle_add_local_once(clone!(#[strong] ctree, move || ctree.rebuild_changed()));
 }));
 ```
 

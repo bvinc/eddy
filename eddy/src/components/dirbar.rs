@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 mod imp {
     use gio::subclass::prelude::*;
-        use glib::types::StaticType;
+    use glib::types::StaticType;
 
     #[derive(Default)]
     pub struct MyModel {
@@ -82,8 +82,12 @@ impl Component for DirBarComponent {
 
         tree_view.append_column(&column0);
 
-        tree_view.connect_test_expand_row(
-            clone!(@strong ctx, @strong tree_store => move |_tv, ti, tp| {
+        tree_view.connect_test_expand_row(clone!(
+            #[strong]
+            ctx,
+            #[strong]
+            tree_store,
+            move |_tv, ti, tp| {
                 dbg!("handle_test_expand_row");
                 let dir = ctx.with_model(|win| win.dir.clone());
 
@@ -93,13 +97,17 @@ impl Component for DirBarComponent {
                     }
                 }
                 Propagation::Proceed
-            }),
-        );
+            }
+        ));
 
         tree_view.connect_test_collapse_row(|_tv, _ti, _tp| Propagation::Proceed);
 
-        tree_view.connect_row_activated(
-            clone!(@strong ctx, @strong tree_store => move |tv, tp, _tvc| {
+        tree_view.connect_row_activated(clone!(
+            #[strong]
+            ctx,
+            #[strong]
+            tree_store,
+            move |tv, tp, _tvc| {
                 let dir = ctx.with_model(|win| win.dir.clone());
                 if let Some(ref ti) = tree_store.iter(tp) {
                     if tree_store.iter_has_child(ti) {
@@ -125,8 +133,8 @@ impl Component for DirBarComponent {
                         error!("tree to path: {}", e);
                     }
                 };
-            }),
-        );
+            }
+        ));
 
         let dir = ctx.with_model(|ws| ws.dir.clone());
 

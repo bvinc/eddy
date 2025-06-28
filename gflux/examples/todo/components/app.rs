@@ -29,14 +29,18 @@ impl Component for AppComponent {
 
         let win_components = Rc::new(RefCell::new(vec![]));
 
-        app.connect_activate(clone!(@strong win_components => move |app| {
-            let c: ComponentHandle<WindowComponent> =
-                ctx.create_child(|s: &AppState| s, |s: &mut AppState| s, app.clone());
+        app.connect_activate(clone!(
+            #[strong]
+            win_components,
+            move |app| {
+                let c: ComponentHandle<WindowComponent> =
+                    ctx.create_child(|s: &AppState| s, |s: &mut AppState| s, app.clone());
 
-            c.widget().present();
+                c.widget().present();
 
-            win_components.borrow_mut().push(c);
-        }));
+                win_components.borrow_mut().push(c);
+            }
+        ));
 
         Self {
             app,

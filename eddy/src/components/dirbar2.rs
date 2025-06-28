@@ -137,7 +137,7 @@ impl Component for DirBarComponent {
                 tree_view.append_column(&column0);
 
                 tree_view.connect_test_expand_row(
-                    clone!(@strong ctx, @strong tree_store => move |_tv, ti, tp| {
+                    clone!(#[strong] ctx, #[strong] tree_store, move |_tv, ti, tp| {
                         dbg!("handle_test_expand_row");
                         let dir = ctx.with_model(|win| win.dir.clone());
 
@@ -153,7 +153,7 @@ impl Component for DirBarComponent {
                 tree_view.connect_test_collapse_row(|_tv, _ti, _tp| Propagation::Proceed);
 
                 tree_view.connect_row_activated(
-                    clone!(@strong ctx, @strong tree_store => move |tv, tp, _tvc| {
+                    clone!(#[strong] ctx, #[strong] tree_store, move |tv, tp, _tvc| {
                         let dir = ctx.with_model(|win| win.dir.clone());
                         if let Some(ref ti) = tree_store.iter(tp) {
                             if tree_store.iter_has_child(ti) {

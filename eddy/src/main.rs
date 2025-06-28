@@ -27,18 +27,28 @@ fn main() -> ExitCode {
     // Create the root of the component tree
     let mut ctree = ComponentTree::new(model.clone());
 
-    model
-        .borrow_mut()
-        .observe(clone!(@strong ctree, @strong model => move |_| {
-            glib::source::idle_add_local_once(clone!(@strong ctree, @strong model => move || {
-                println!("MODEL I JUST WOKE UP");
-                ctree.exec_rebuilds();
+    model.borrow_mut().observe(clone!(
+        #[strong]
+        ctree,
+        #[strong]
+        model,
+        move |_| {
+            glib::source::idle_add_local_once(clone!(
+                #[strong]
+                ctree,
+                #[strong]
+                model,
+                move || {
+                    println!("MODEL I JUST WOKE UP");
+                    ctree.exec_rebuilds();
 
-                if model.borrow().get().has_events() {
-                    model.borrow_mut().get_mut().handle_events();
+                    if model.borrow().get().has_events() {
+                        model.borrow_mut().get_mut().handle_events();
+                    }
                 }
-            }));
-        }));
+            ));
+        }
+    ));
 
     let appc: ComponentHandle<AppComponent> = ctree.new_component(|s| s, |s| s, ());
 

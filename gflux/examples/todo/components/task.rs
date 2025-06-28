@@ -23,9 +23,13 @@ impl Component for TaskComponent {
         let task_id = ctx.with_model(|task| task.id);
 
         let checkbox = gtk::CheckButton::new();
-        checkbox.connect_toggled(clone!(@strong ctx => move |cb| {
-            ctx.with_model_mut(|task| task.done = cb.is_active());
-        }));
+        checkbox.connect_toggled(clone!(
+            #[strong]
+            ctx,
+            move |cb| {
+                ctx.with_model_mut(|task| task.done = cb.is_active());
+            }
+        ));
 
         let label = gtk::Label::new(None);
         label.set_hexpand(true);

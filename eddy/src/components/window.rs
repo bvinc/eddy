@@ -105,56 +105,89 @@ impl Component for WindowComponent {
         window.set_show_menubar(true);
 
         let action_new = SimpleAction::new("new", None);
-        action_new.connect_activate(
-            clone!(@weak notebook, @weak window, @strong ctx => move |_, _| {
+        action_new.connect_activate(clone!(
+            #[weak]
+            notebook,
+            #[weak]
+            window,
+            #[strong]
+            ctx,
+            move |_, _| {
                 let res = ctx.with_model_mut(|ws| ws.new_view(None));
                 show_res(&window, res);
-            }),
-        );
+            }
+        ));
         window.add_action(&action_new);
 
         let action_close = SimpleAction::new("close_view", None);
-        action_close.connect_activate(clone!(@weak notebook, @strong ctx => move |_, _| {
-            if let Some(focused_view) = ctx.with_model(|ws| ws.focused_view) {
-                ctx.with_model_mut(|ws| ws.close_view(focused_view))
+        action_close.connect_activate(clone!(
+            #[weak]
+            notebook,
+            #[strong]
+            ctx,
+            move |_, _| {
+                if let Some(focused_view) = ctx.with_model(|ws| ws.focused_view) {
+                    ctx.with_model_mut(|ws| ws.close_view(focused_view))
+                }
             }
-        }));
+        ));
         window.add_action(&action_close);
 
         let action_save = SimpleAction::new("save", None);
-        action_save.connect_activate(
-            clone!(@weak notebook, @weak window, @strong ctx => move |_, _| {
+        action_save.connect_activate(clone!(
+            #[weak]
+            notebook,
+            #[weak]
+            window,
+            #[strong]
+            ctx,
+            move |_, _| {
                 if let Some(focused_view) = ctx.with_model(|ws| ws.focused_view) {
                     let res = ctx.with_model_mut(|ws| ws.save(focused_view));
                     show_res(&window, res);
                 }
-            }),
-        );
+            }
+        ));
         window.add_action(&action_save);
 
         let action_save_as = SimpleAction::new("save_as", None);
-        action_save_as.connect_activate(
-            clone!(@weak notebook, @weak window, @strong ctx => move |_, _| {
+        action_save_as.connect_activate(clone!(
+            #[weak]
+            notebook,
+            #[weak]
+            window,
+            #[strong]
+            ctx,
+            move |_, _| {
                 if let Some(focused_view) = ctx.with_model(|ws| ws.focused_view) {
                     let fcd = FileChooserDialog::new(
                         Some("Save File"),
                         Some(&window),
                         gtk::FileChooserAction::Save,
-                        &[("_Cancel", ResponseType::Cancel), ("_Save", ResponseType::Accept)]);
+                        &[
+                            ("_Cancel", ResponseType::Cancel),
+                            ("_Save", ResponseType::Accept),
+                        ],
+                    );
                     fcd.set_modal(true);
-                    fcd.connect_response(clone!(@strong ctx => move |chooser, response| {
-                        if response == ResponseType::Accept {
-                            if let Some(path) = chooser.file().and_then(|f| f.path()) {
-                                let res = ctx.with_model_mut(|ws| ws.save_as(focused_view, &path));
-                                show_res(&window, res);
+                    fcd.connect_response(clone!(
+                        #[strong]
+                        ctx,
+                        move |chooser, response| {
+                            if response == ResponseType::Accept {
+                                if let Some(path) = chooser.file().and_then(|f| f.path()) {
+                                    let res =
+                                        ctx.with_model_mut(|ws| ws.save_as(focused_view, &path));
+                                    show_res(&window, res);
+                                }
                             }
+                            chooser.destroy();
                         }
-                        chooser.destroy();
-                    }));
+                    ));
                     fcd.present();
                 }
-            }),
-        );
+            }
+        ));
         window.add_action(&action_save_as);
 
         // Present window

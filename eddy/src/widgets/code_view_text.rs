@@ -154,12 +154,16 @@ impl ObjectImpl for CodeViewTextPrivate {
         obj.set_hexpand(true);
 
         let gesture_click = gtk::GestureClick::new();
-        gesture_click.connect_pressed(clone!(@strong obj as this => move |gc, n_press, x, y| {
-            this.grab_focus();
-            let this_ = CodeViewTextPrivate::from_obj(&this);
-            this_.button_pressed(&this, gc, n_press, x, y);
-            // gc.set_state(gtk::EventSequenceState::Claimed);
-        }));
+        gesture_click.connect_pressed(clone!(
+            #[strong(rename_to = this)]
+            obj,
+            move |gc, n_press, x, y| {
+                this.grab_focus();
+                let this_ = CodeViewTextPrivate::from_obj(&this);
+                this_.button_pressed(&this, gc, n_press, x, y);
+                // gc.set_state(gtk::EventSequenceState::Claimed);
+            }
+        ));
         obj.add_controller(gesture_click);
 
         let gesture_drag = gtk::GestureDrag::new();
@@ -167,24 +171,34 @@ impl ObjectImpl for CodeViewTextPrivate {
         // gesture_drag.connect_drag_begin(|gd, x, y| {
         //     dbg!("drag begin");
         // });
-        gesture_drag.connect_drag_end(clone!(@strong obj as this => move |gd, _, _| {
-            this.drag_end(gd);
-        }));
-        gesture_drag.connect_drag_update(clone!(@strong obj as this => move |gd, _, _| {
-            this.drag_update(gd);
-            // gd.set_state(gtk::EventSequenceState::Claimed);
-        }));
+        gesture_drag.connect_drag_end(clone!(
+            #[strong(rename_to = this)]
+            obj,
+            move |gd, _, _| {
+                this.drag_end(gd);
+            }
+        ));
+        gesture_drag.connect_drag_update(clone!(
+            #[strong(rename_to = this)]
+            obj,
+            move |gd, _, _| {
+                this.drag_update(gd);
+                // gd.set_state(gtk::EventSequenceState::Claimed);
+            }
+        ));
 
         obj.add_controller(gesture_drag);
 
         let event_controller_key = gtk::EventControllerKey::new();
-        event_controller_key.connect_key_pressed(
-            clone!(@strong obj as this => move |_,key, code, state| {
+        event_controller_key.connect_key_pressed(clone!(
+            #[strong(rename_to = this)]
+            obj,
+            move |_, key, code, state| {
                 let this_ = CodeViewTextPrivate::from_obj(&this);
                 this_.key_pressed(key, code, state);
                 Propagation::Stop
-            }),
-        );
+            }
+        ));
         obj.add_controller(event_controller_key);
 
         let event_controller_scroll = gtk::EventControllerScroll::builder()
@@ -196,20 +210,20 @@ impl ObjectImpl for CodeViewTextPrivate {
             // .propagation_limit(gtk::PropagationLimit::SameNative)
             // .propagation_phase(gtk::PropagationPhase::Target)
             .build();
-        // event_controller_scroll.connect_decelerate(clone!(@strong obj as this => move |_,a,b| {
+        // event_controller_scroll.connect_decelerate(clone!(#[strong] obj as this ,  move |_,a,b| {
         //     dbg!("connect_decelerate", a, b);
         // }));
-        // event_controller_scroll.connect_scroll(clone!(@strong obj as this => move |_,a,b| {
+        // event_controller_scroll.connect_scroll(clone!(#[strong] obj as this ,  move |_,a,b| {
         //     dbg!("connect_scroll", a, b);
         //     gtk::Inhibit(true)
         // }));
-        // event_controller_scroll.connect_scroll_begin(clone!(@strong obj as this => move |_| {
+        // event_controller_scroll.connect_scroll_begin(clone!(#[strong] obj as this ,  move |_| {
         //     dbg!("connect_scroll");
         // }));
-        // event_controller_scroll.connect_scroll_end(clone!(@strong obj as this => move |_| {
+        // event_controller_scroll.connect_scroll_end(clone!(#[strong] obj as this ,  move |_| {
         //     dbg!("connect_scroll_end");
         // }));
-        // event_controller_scroll.connect_flags_notify(clone!(@strong obj as this => move |_| {
+        // event_controller_scroll.connect_flags_notify(clone!(#[strong] obj as this ,  move |_| {
         //     dbg!("connect_flags_notify");
         // }));
         obj.add_controller(event_controller_scroll);
@@ -853,11 +867,15 @@ impl CodeViewTextPrivate {
         let ctx = self.ctx.get().unwrap().clone();
         clipboard.read_text_async(
             Cancellable::NONE,
-            clone!(@strong ctx => move |res| {
-                if let Ok(Some(s)) = res {
-                    ctx.with_model_mut(|ws| ws.buffer_mut(view_id).insert(view_id, s.as_str()))
+            clone!(
+                #[strong]
+                ctx,
+                move |res| {
+                    if let Ok(Some(s)) = res {
+                        ctx.with_model_mut(|ws| ws.buffer_mut(view_id).insert(view_id, s.as_str()))
+                    }
                 }
-            }),
+            ),
         );
     }
 
@@ -1059,13 +1077,17 @@ impl CodeViewText {
         // code_view.setup_widgets();
         // code_view.setup_signals();
 
-        obj.connect_has_focus_notify(clone!(@strong ctx=> move |_| {
-            let focused_view = ctx.with_model(|ws| ws.focused_view);
-            if focused_view != Some(view_id) {
-                println!("focused changed to {}", view_id);
-                ctx.with_model_mut(|ws| ws.focused_view = Some(view_id));
+        obj.connect_has_focus_notify(clone!(
+            #[strong]
+            ctx,
+            move |_| {
+                let focused_view = ctx.with_model(|ws| ws.focused_view);
+                if focused_view != Some(view_id) {
+                    println!("focused changed to {}", view_id);
+                    ctx.with_model_mut(|ws| ws.focused_view = Some(view_id));
+                }
             }
-        }));
+        ));
 
         obj
     }
@@ -1077,23 +1099,25 @@ impl CodeViewText {
     pub fn set_hadjust(&self, adj: &Adjustment) {
         let cvt_priv = CodeViewTextPrivate::from_obj(self);
         cvt_priv.hadj.replace(adj.clone());
-        cvt_priv
-            .hadj
-            .borrow()
-            .connect_value_changed(clone!(@weak self as cvt => move |_| {
+        cvt_priv.hadj.borrow().connect_value_changed(clone!(
+            #[weak(rename_to=cvt)]
+            self,
+            move |_| {
                 cvt.queue_draw();
-            }));
+            }
+        ));
     }
 
     pub fn set_vadjust(&self, adj: &Adjustment) {
         let cvt_priv = CodeViewTextPrivate::from_obj(self);
         cvt_priv.vadj.replace(adj.clone());
-        cvt_priv
-            .vadj
-            .borrow()
-            .connect_value_changed(clone!(@weak self as cvt => move |_| {
+        cvt_priv.vadj.borrow().connect_value_changed(clone!(
+            #[weak(rename_to=cvt)]
+            self,
+            move |_| {
                 cvt.queue_draw();
-            }));
+            }
+        ));
     }
 
     pub fn buffer_changed(&self) {

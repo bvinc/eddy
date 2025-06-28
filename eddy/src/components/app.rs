@@ -30,7 +30,7 @@ impl Component for AppComponent {
 
         // let win_components = Rc::new(RefCell::new(vec![]));
 
-        // app.connect_activate(clone!(@strong win_components => move |app| {
+        // app.connect_activate(clone!(#[strong] win_components, move |app| {
         //     let c: ComponentHandle<WindowComponent> =
         //         ctx.create_child(|s: &Model| s, |s: &mut Model| s, app.clone());
 
@@ -39,10 +39,14 @@ impl Component for AppComponent {
         //     win_components.borrow_mut().push(c);
         // }));
 
-        app.connect_activate(clone!(@strong ctx => move |_app| {
-            ctx.with_model_mut(|m| m.new_win());
-            ctx.rebuild();
-        }));
+        app.connect_activate(clone!(
+            #[strong]
+            ctx,
+            move |_app| {
+                ctx.with_model_mut(|m| m.new_win());
+                ctx.rebuild();
+            }
+        ));
 
         Self {
             app,

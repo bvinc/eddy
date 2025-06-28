@@ -54,9 +54,17 @@ fn main() -> glib::ExitCode {
     // Create the root of the component tree
     let mut ctree = ComponentTree::new(global.clone());
 
-    global.borrow_mut().observe(clone!(@strong ctree => move |_| {
-        glib::source::idle_add_local_once(clone!(@strong ctree => move || ctree.exec_rebuilds()));
-    }));
+    global.borrow_mut().observe(clone!(
+        #[strong]
+        ctree,
+        move |_| {
+            glib::source::idle_add_local_once(clone!(
+                #[strong]
+                ctree,
+                move || ctree.exec_rebuilds()
+            ));
+        }
+    ));
 
     let appc: ComponentHandle<AppComponent> = ctree.new_component(|s| s, |s| s, ());
 
