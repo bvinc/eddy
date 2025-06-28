@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 mod imp {
     use gio::subclass::prelude::*;
     use glib::subclass::prelude::*;
-    use glib::StaticType;
+    use glib::types::StaticType;
 
     #[derive(Default)]
     pub struct MyModel {

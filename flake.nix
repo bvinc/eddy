@@ -20,8 +20,8 @@
         overlays = [ rust-overlay.overlays.default ];
         pkgs = import nixpkgs { inherit system overlays; };
 
-        # Exact Rust release you want:
         rustToolchain = pkgs.rust-bin.stable."1.88.0".default;
+        rustSrc = pkgs.rust-bin.stable."1.88.0".rust-src;
 
         libs = with pkgs; [
           cmake
@@ -48,8 +48,9 @@
         # nix develop —> environment with Rust 1.88
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            rustToolchain # cargo + rustc 1.88.0
-            pkgs.cargo-outdated # handy optional extra
+            rustToolchain
+            rustSrc
+            pkgs.cargo-outdated
           ] ++ libs;
         };
       }

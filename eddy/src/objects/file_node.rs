@@ -11,9 +11,11 @@ mod imp {
     use gflux::ComponentCtx;
     use gio::subclass::prelude::*;
     use glib::subclass::prelude::*;
-    use glib::{Properties, StaticType};
+    use glib::types::StaticType;
+    use glib::Properties;
+    use gtk::prelude::*;
     use gtk::subclass::prelude::*;
-    use gtk::{prelude::*, StringObject};
+    use gtk::StringObject;
     use once_cell::unsync::OnceCell;
     use std::cell::{Cell, RefCell};
     use std::path::PathBuf;
