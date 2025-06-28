@@ -9,7 +9,7 @@ version = "0.1.0"
 anyhow = "1.0"
 cairo-rs = "0.20"
 eddy-model = {path = "../eddy-model"}
-env_logger = "0.10"
+env_logger = "0.11"
 gflux = {path = "../gflux"}
 gio = "0.20"
 glib = "0.20"

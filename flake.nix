@@ -20,8 +20,9 @@
         overlays = [ rust-overlay.overlays.default ];
         pkgs = import nixpkgs { inherit system overlays; };
 
-        rustToolchain = pkgs.rust-bin.stable."1.88.0".default;
-        rustSrc = pkgs.rust-bin.stable."1.88.0".rust-src;
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" ];
+        };
 
         libs = with pkgs; [
           cmake
@@ -39,7 +40,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
-            rustSrc
+
             pkgs.cargo-outdated
           ] ++ libs;
         };
