@@ -204,7 +204,7 @@ impl Component for WindowComponent {
             let page_num = dbg!(self
                 .notebook
                 .append_page(&cv_comp.widget(), Some(&tl_comp.widget())));
-            self.notebook.set_page(page_num as i32);
+            self.notebook.set_current_page(Some(page_num as u32));
 
             self.code_views.insert(view_id, cv_comp);
             self.tab_labels.insert(view_id, tl_comp);
