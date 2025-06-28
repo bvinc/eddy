@@ -93,7 +93,7 @@ impl Component for DirBarComponent {
 
                 if let Ok(path) = tree_path_to_path(Some(&dir), &tree_store, tp) {
                     if let Err(e) = refresh_dir(&ctx, &tree_store, Some(ti), &path) {
-                        warn!("{}", e);
+                        warn!("{e}");
                     }
                 }
                 Propagation::Proceed
@@ -130,7 +130,7 @@ impl Component for DirBarComponent {
                         }
                     }
                     Err(e) => {
-                        error!("tree to path: {}", e);
+                        error!("tree to path: {e}");
                     }
                 };
             }

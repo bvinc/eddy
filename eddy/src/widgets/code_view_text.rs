@@ -237,7 +237,7 @@ impl WidgetImpl for CodeViewTextPrivate {
     }
     fn size_allocate(&self, w: i32, h: i32, bl: i32) {
         self.parent_size_allocate(w, h, bl);
-        debug!("cvt size allocate {} {} {}", w, h, bl);
+        debug!("cvt size allocate {w} {h} {bl}");
 
         let vadj = self.vadj.borrow().clone();
         vadj.set_page_size(f64::from(h));
@@ -495,10 +495,10 @@ impl CodeViewTextPrivate {
         let _button = gc.current_button();
         let _event = gc.last_event(sequence.as_ref()).unwrap();
 
-        let _shift = gc.current_event().map_or(false, |ev| {
+        let _shift = gc.current_event().is_some_and(|ev| {
             ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
         });
-        let ctrl = gc.current_event().map_or(false, |ev| {
+        let ctrl = gc.current_event().is_some_and(|ev| {
             ev.modifier_state()
                 .contains(gdk::ModifierType::CONTROL_MASK)
         });
@@ -1050,7 +1050,7 @@ impl CodeViewTextPrivate {
                             self.with_buffer_mut(|b| b.insert(view_id, &c.to_string()));
                         }
                         _ => {
-                            debug!("unhandled key: {:?}", ch);
+                            debug!("unhandled key: {ch:?}");
                         }
                     }
                 }
@@ -1083,7 +1083,7 @@ impl CodeViewText {
             move |_| {
                 let focused_view = ctx.with_model(|ws| ws.focused_view);
                 if focused_view != Some(view_id) {
-                    println!("focused changed to {}", view_id);
+                    println!("focused changed to {view_id}");
                     ctx.with_model_mut(|ws| ws.focused_view = Some(view_id));
                 }
             }

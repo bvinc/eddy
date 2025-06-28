@@ -51,7 +51,7 @@ impl Layer for RustLayer {
         self.captures_by_id.get(idx).and_then(|c| *c)
     }
     fn capture_from_node(&self, id: usize) -> Option<Capture> {
-        self.node_to_capture.get(&id).map(|c| *c)
+        self.node_to_capture.get(&id).copied()
     }
     fn unset_tree(&mut self) {
         self.tree = None;

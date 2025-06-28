@@ -255,7 +255,7 @@ pub fn main_loop(
             if let Err(e) =
                 ssh_do_main_loop(&user, &host, port, &wakeup, &req_receiver, &resp_sender)
             {
-                error!("ssh: {}", e);
+                error!("ssh: {e}");
                 sleep(Duration::from_secs(1));
             }
         }
@@ -275,11 +275,11 @@ pub fn ssh_do_main_loop(
     dbg!("backend main loop");
 
     // Connect to the local SSH server
-    let tcp = dbg!(TcpStream::connect(host.clone())?);
+    let tcp = dbg!(TcpStream::connect(host)?);
     let mut sess = Session::new()?;
     sess.set_tcp_stream(tcp);
     sess.handshake()?;
-    sess.userauth_agent(&user)?;
+    sess.userauth_agent(user)?;
     assert!(sess.authenticated());
 
     // execute a command
@@ -288,7 +288,7 @@ pub fn ssh_do_main_loop(
     let mut s = String::new();
     chan.read_to_string(&mut s)?;
     chan.wait_close()?;
-    println!("{}", s);
+    println!("{s}");
 
     // list files with sftp
     // let sftp = sess.sftp()?;
@@ -299,8 +299,8 @@ pub fn ssh_do_main_loop(
     // dbg!(dir.readdir());
 
     loop {
-        if let Err(e) = handle_backend_req(&wakeup, &req_receiver, &resp_sender, &sess) {
-            error!("backend req error: {}", e);
+        if let Err(e) = handle_backend_req(wakeup, req_receiver, resp_sender, &sess) {
+            error!("backend req error: {e}");
         }
     }
 
@@ -341,7 +341,7 @@ pub fn handle_backend_req(
                 }
             }
         }
-        Err(e) => error!("backend failed {}", e),
+        Err(e) => error!("backend failed {e}"),
     }
     wakeup();
     Ok(())

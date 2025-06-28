@@ -32,7 +32,7 @@ pub fn layer_from_path(path: &Path) -> Box<dyn Layer> {
             return Box::new(GoLayer::new());
         }
     }
-    return Box::new(NilLayer::new());
+    Box::new(NilLayer::new())
 }
 
 pub struct NilLayer {}

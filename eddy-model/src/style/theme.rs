@@ -105,7 +105,7 @@ impl FromStr for Theme {
 }
 impl Theme {
     pub fn attributes(&self, c: Capture) -> Option<ThemeAttributes> {
-        self.highlights.get(&c).map(|a| *a)
+        self.highlights.get(&c).copied()
     }
 }
 

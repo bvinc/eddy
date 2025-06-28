@@ -56,8 +56,7 @@ impl Component for ListComponent {
         let num_todo = num_all - num_done;
 
         self.summary.set_text(&format!(
-            "All: {}  Todo: {}  Done: {}",
-            num_all, num_todo, num_done
+            "All: {num_all}  Todo: {num_todo}  Done: {num_done}"
         ));
 
         // Remove components that are no longer in the model

@@ -110,7 +110,7 @@ impl LanguageServerClient {
 
     pub fn handle_message(&mut self, message: &str) {
         match JsonRpc::parse(message) {
-            Ok(JsonRpc::Request(obj)) => trace!("client received unexpected request: {:?}", obj),
+            Ok(JsonRpc::Request(obj)) => trace!("client received unexpected request: {obj:?}"),
             Ok(value @ JsonRpc::Notification(_)) => {
                 self.handle_notification(value.get_method().unwrap(), value.get_params().unwrap())
             }
@@ -124,7 +124,7 @@ impl LanguageServerClient {
                 let error = value.get_error().unwrap();
                 self.handle_response(id, Err(error.clone()));
             }
-            Err(err) => error!("Error in parsing incoming string: {}", err),
+            Err(err) => error!("Error in parsing incoming string: {err}"),
         }
     }
 
@@ -132,15 +132,13 @@ impl LanguageServerClient {
         let callback = self
             .pending
             .remove(&id)
-            .unwrap_or_else(|| panic!("id {} missing from request table", id));
+            .unwrap_or_else(|| panic!("id {id} missing from request table"));
         callback.call(self, result);
     }
 
     pub fn handle_notification(&mut self, method: &str, params: Params) {
         trace!(
-            "Notification Received =>\n Method: {}, params: {:?}",
-            method,
-            params
+            "Notification Received =>\n Method: {method}, params: {params:?}"
         );
         match method {
             "window/showMessage" => {}
@@ -154,7 +152,7 @@ impl LanguageServerClient {
     pub fn handle_misc_notification(&mut self, method: &str, params: Params) {
         match self.language_id.to_lowercase().as_ref() {
             "rust" => self.handle_rust_misc_notification(method, params),
-            _ => warn!("Unknown notification: {}", method),
+            _ => warn!("Unknown notification: {method}"),
         }
     }
 
@@ -190,10 +188,10 @@ impl LanguageServerClient {
     fn send_rpc(&mut self, value: &Value) {
         let rpc = match prepare_lsp_json(value) {
             Ok(r) => r,
-            Err(err) => panic!("Encoding Error {:?}", err),
+            Err(err) => panic!("Encoding Error {err:?}"),
         };
 
-        trace!("Sending RPC: {:?}", rpc);
+        trace!("Sending RPC: {rpc:?}");
         self.write(rpc.as_ref());
     }
 
@@ -353,7 +351,7 @@ impl LanguageServerClient {
                             } else {
                                 let mut value = String::new();
                                 if let Some(Value::String(s)) = &m.get("title") {
-                                    value.push_str(&format!("{} ", s));
+                                    value.push_str(&format!("{s} "));
                                 }
 
                                 if let Some(Value::Number(n)) = &m.get("percentage") {
@@ -378,7 +376,7 @@ impl LanguageServerClient {
                     _ => warn!("Unexpected type"),
                 }
             }
-            _ => warn!("Unknown Notification from RLS: {} ", method),
+            _ => warn!("Unknown Notification from RLS: {method} "),
         }
     }
 }

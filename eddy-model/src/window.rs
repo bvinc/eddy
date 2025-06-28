@@ -146,7 +146,7 @@ impl Window {
     }
 
     pub fn close_view(&mut self, view_id: usize) {
-        debug!("close view {}", view_id);
+        debug!("close view {view_id}");
         self.views.remove(&view_id);
         if self.focused_view == Some(view_id) {
             self.focused_view = None;

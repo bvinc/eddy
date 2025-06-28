@@ -127,7 +127,7 @@ impl GutterPrivate {
     fn buffer_changed(&self, gutter: &Gutter) {
         let _view_id = self.view_id.get();
         let max_line_num = self.with_buffer(|b| b.len_lines());
-        self.gutter_nchars.set(format!("{}", max_line_num).len());
+        self.gutter_nchars.set(format!("{max_line_num}").len());
 
         gutter.queue_draw();
         gutter.queue_resize();
@@ -209,7 +209,7 @@ impl GutterPrivate {
         }
 
         // Calculate ordinal or max line length
-        let nchars: usize = std::cmp::max(format!("{}", num_lines).len(), 2);
+        let nchars: usize = std::cmp::max(format!("{num_lines}").len(), 2);
 
         for line in visible_lines {
             let mut fg_color = gdk::RGBA::BLACK;

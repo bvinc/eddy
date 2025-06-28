@@ -65,7 +65,7 @@ pub fn start_new_server(
 
         // Unwrap to indicate that we want thread to panic on failure
         std::thread::Builder::new()
-            .name(format!("{}-lsp-stdout-Looper", language_id))
+            .name(format!("{language_id}-lsp-stdout-Looper"))
             .spawn(move || {
                 let mut reader = Box::new(BufReader::new(stdout.take().unwrap()));
                 loop {
@@ -74,7 +74,7 @@ pub fn start_new_server(
                             let mut server_locked = ls_client.lock().unwrap();
                             server_locked.handle_message(message_str.as_ref());
                         }
-                        Err(err) => error!("Error occurred {:?}", err),
+                        Err(err) => error!("Error occurred {err:?}"),
                     };
                 }
             })
