@@ -1,20 +1,13 @@
 use anyhow::bail;
 use eddy_model::{Model, Window};
 use gflux::{Component, ComponentCtx};
-use gio::subclass::prelude::*;
-use glib::subclass::prelude::*;
-use glib::{clone, Propagation};
 use gtk::prelude::*;
-use gtk::subclass::prelude::*;
-use gtk::{prelude::*, Label, MultiSelection, StringObject, TreeListModel};
-use log::*;
+use gtk::{Label, MultiSelection, TreeListModel};
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::objects::file_node::FileNode;
-use crate::objects::project_list::ProjectGList;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -210,7 +203,7 @@ impl Component for DirBarComponent {
             // dbg!(tl_model.item(0)?.downcast::<gtk::TreeListRow>().ok()?);
             // dbg!(tl_model.row(0));
             // dbg!(tl_model.child_row(0));
-            let item0 = list_store.item(0);
+            let _item0 = list_store.item(0);
             // dbg!(item0);
             Some(())
         }();
@@ -251,7 +244,7 @@ pub fn refresh_dir(
     ctx.with_model_mut(|win| {
         win.backend.list_files(
             path,
-            Box::new(|win, files| {
+            Box::new(|_win, files| {
                 dbg!(files);
             }),
         )

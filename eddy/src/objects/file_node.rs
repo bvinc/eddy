@@ -1,27 +1,16 @@
 use std::path::PathBuf;
 
 use eddy_model::ProjectId;
-use gflux::ComponentCtx;
 
-use crate::components::dirbar2::DirBarComponent;
 use gtk::subclass::prelude::*;
 
 mod imp {
     use eddy_model::ProjectId;
-    use gflux::ComponentCtx;
-    use gio::subclass::prelude::*;
-    use glib::subclass::prelude::*;
-    use glib::types::StaticType;
-    use glib::Properties;
-    use gtk::prelude::*;
-    use gtk::subclass::prelude::*;
-    use gtk::StringObject;
-    use once_cell::unsync::OnceCell;
+        use gio::subclass::prelude::*;
     use std::cell::{Cell, RefCell};
     use std::path::PathBuf;
 
-    use crate::components::dirbar2::DirBarComponent;
-
+    
     #[derive(Default)]
     pub struct FileNode {
         pub proj_name: RefCell<String>,

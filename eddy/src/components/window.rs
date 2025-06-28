@@ -4,7 +4,6 @@ use eddy_model::{Model, ViewId, Window};
 use gflux::{Component, ComponentCtx, ComponentHandle};
 use gio::SimpleAction;
 use glib::clone;
-use gtk::ffi::GtkFileChooserDialog;
 use gtk::{
     prelude::*, ApplicationWindow, ButtonsType, FileChooserDialog, MessageDialog, MessageType,
     Orientation, ResponseType,
@@ -34,7 +33,7 @@ pub struct WindowComponent {
 impl WindowComponent {
     fn build_popover_menu() -> gtk::PopoverMenu {
         let menu_model = gio::Menu::new();
-        let item = gio::MenuItem::new(Some("New"), Some("app.new"));
+        let _item = gio::MenuItem::new(Some("New"), Some("app.new"));
         menu_model.append_item(&gio::MenuItem::new(Some("New"), Some("win.new")));
         menu_model.append_item(&gio::MenuItem::new(Some("Close"), Some("win.close_view")));
         menu_model.append_item(&gio::MenuItem::new(Some("Save"), Some("win.save")));

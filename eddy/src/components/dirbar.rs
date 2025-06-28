@@ -1,8 +1,6 @@
 use anyhow::bail;
 use eddy_model::{Model, Window};
 use gflux::{Component, ComponentCtx};
-use gio::subclass::prelude::*;
-use glib::subclass::prelude::*;
 use glib::{clone, Propagation};
 use gtk::prelude::*;
 use log::*;
@@ -12,8 +10,7 @@ use std::path::{Path, PathBuf};
 
 mod imp {
     use gio::subclass::prelude::*;
-    use glib::subclass::prelude::*;
-    use glib::types::StaticType;
+        use glib::types::StaticType;
 
     #[derive(Default)]
     pub struct MyModel {
@@ -40,7 +37,7 @@ mod imp {
             0
         }
 
-        fn item(&self, position: u32) -> Option<glib::Object> {
+        fn item(&self, _position: u32) -> Option<glib::Object> {
             None
             // self.items
             //     .borrow()
@@ -161,7 +158,7 @@ pub fn refresh_dir(
     ctx.with_model_mut(|win| {
         win.backend.list_files(
             path,
-            Box::new(|win, files| {
+            Box::new(|_win, files| {
                 dbg!(files);
             }),
         )

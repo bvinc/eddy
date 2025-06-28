@@ -339,7 +339,7 @@ impl CodeViewTextPrivate {
         self.scroll_to_carets(cvt);
     }
 
-    fn scroll_to_carets(&self, cvt: &CodeViewText) {
+    fn scroll_to_carets(&self, _cvt: &CodeViewText) {
         let view_id = self.view_id.get();
         let font_height = self.font_metrics.borrow().font_height;
         let selections = self.with_buffer(|b| b.selections(view_id).to_vec());
@@ -452,7 +452,7 @@ impl CodeViewTextPrivate {
         })
     }
 
-    fn xy_to_line_idx(&self, cvt: &CodeViewText, x: f64, y: f64) -> (usize, usize) {
+    fn xy_to_line_idx(&self, _cvt: &CodeViewText, x: f64, y: f64) -> (usize, usize) {
         // We round the values from the scrollbars, because if we don't,
         // rectangles will be antialiased and lines will show up inbetween
         // highlighted lines of text.  Since they're rounded for drawing I
@@ -478,8 +478,8 @@ impl CodeViewTextPrivate {
         let view_id = self.view_id.get();
         // dbg!(n_press);
         let sequence = gc.current_sequence(); // Can be None
-        let button = gc.current_button();
-        let event = gc.last_event(sequence.as_ref()).unwrap();
+        let _button = gc.current_button();
+        let _event = gc.last_event(sequence.as_ref()).unwrap();
 
         let _shift = gc.current_event().map_or(false, |ev| {
             ev.modifier_state().contains(gdk::ModifierType::SHIFT_MASK)
