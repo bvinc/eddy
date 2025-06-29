@@ -125,11 +125,11 @@ impl Component for DirBarComponent {
         list_item_factory.connect_setup(|_, _| println!("setup"));
         let list_view = gtk::ListView::new(Some(multi_selection), Some(list_item_factory));
 
+        /*
         let column0 = gtk::TreeViewColumn::new();
         let cell0 = gtk::CellRendererText::new();
         column0.pack_start(&cell0, true);
         column0.add_attribute(&cell0, "text", 0);
-        /*
                 // let tree_view = TreeView::new();
                 tree_view.set_model(Some(&tree_store));
                 tree_view.set_headers_visible(false);

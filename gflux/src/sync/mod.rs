@@ -192,12 +192,6 @@ struct ComponentBase<C: Component> {
 }
 
 impl<C: Component> ComponentBaseTrait for ComponentBase<C> {
-    fn id(&self) -> ComponentId {
-        self.ctx.id
-    }
-    fn parent_id(&self) -> Option<ComponentId> {
-        self.ctx.parent_id
-    }
     fn rebuild(&mut self) {
         self.component.rebuild(self.ctx.clone());
     }
@@ -210,8 +204,6 @@ impl<C: Component> Drop for ComponentBase<C> {
 }
 
 trait ComponentBaseTrait {
-    fn id(&self) -> ComponentId;
-    fn parent_id(&self) -> Option<ComponentId>;
     fn rebuild(&mut self);
 }
 
