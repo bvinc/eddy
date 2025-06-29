@@ -25,14 +25,14 @@
         };
 
         libs = with pkgs; [
-          cmake
-          pkg-config
-          gtk4
-          glib
-          gdk-pixbuf
           cairo
-          pango
+          cmake
+          gdk-pixbuf
+          glib
+          gtk4
           openssl
+          pango
+          pkg-config
         ];
       in
       {
