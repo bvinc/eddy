@@ -102,9 +102,11 @@ impl<M> ComponentTree<M> {
         params: C::Params,
     ) -> ComponentHandle<C>
     where
-        C: Component<GlobalModel = M> + 'static,
-        L: Fn(&C::GlobalModel) -> &C::Model + 'static,
-        LM: Fn(&mut C::GlobalModel) -> &mut C::Model + 'static,
+        C: Component<GlobalModel = M> + Send + Sync + 'static,
+        L: Fn(&C::GlobalModel) -> &C::Model + Send + Sync + 'static,
+        LM: Fn(&mut C::GlobalModel) -> &mut C::Model + Send + Sync + 'static,
+        C::Model: Send + Sync,
+        M: Send + Sync,
     {
         let id = self.comp_table.write().unwrap().reserve_id();
         let mut ctx = ComponentCtx {
@@ -168,11 +170,19 @@ impl ComponentTable {
 
 /// Handle for a component
 #[derive(Debug)]
-pub struct ComponentHandle<C: Component> {
+pub struct ComponentHandle<C: Component + Send + Sync>
+where
+    C::GlobalModel: Send + Sync,
+    C::Model: Send + Sync,
+{
     inner: Arc<RwLock<ComponentBase<C>>>,
 }
 
-impl<C: Component> ComponentHandle<C> {
+impl<C: Component + Send + Sync> ComponentHandle<C>
+where
+    C::GlobalModel: Send + Sync,
+    C::Model: Send + Sync,
+{
     /// Returns the root widget
     pub fn widget(&self) -> C::Widget {
         self.inner.read().unwrap().component.widget()
@@ -186,24 +196,36 @@ impl<C: Component> ComponentHandle<C> {
 }
 
 #[derive(Debug)]
-struct ComponentBase<C: Component> {
+struct ComponentBase<C: Component + Send + Sync>
+where
+    C::GlobalModel: Send + Sync,
+    C::Model: Send + Sync,
+{
     ctx: ComponentCtx<C>,
     component: C,
 }
 
-impl<C: Component> ComponentBaseTrait for ComponentBase<C> {
+impl<C: Component + Send + Sync> ComponentBaseTrait for ComponentBase<C>
+where
+    C::GlobalModel: Send + Sync,
+    C::Model: Send + Sync,
+{
     fn rebuild(&mut self) {
         self.component.rebuild(self.ctx.clone());
     }
 }
 
-impl<C: Component> Drop for ComponentBase<C> {
+impl<C: Component + Send + Sync> Drop for ComponentBase<C>
+where
+    C::GlobalModel: Send + Sync,
+    C::Model: Send + Sync,
+{
     fn drop(&mut self) {
         self.ctx.comp_table.write().unwrap().destroy(self.ctx.id);
     }
 }
 
-trait ComponentBaseTrait {
+trait ComponentBaseTrait: Send + Sync {
     fn rebuild(&mut self);
 }
 
@@ -218,8 +240,8 @@ pub struct ComponentCtx<C: Component + ?Sized> {
 
     global: Arc<RwLock<Obs<C::GlobalModel>>>,
     comp_table: Arc<RwLock<ComponentTable>>,
-    lens: Arc<dyn Fn(&C::GlobalModel) -> &C::Model>,
-    lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut C::Model>,
+    lens: Arc<dyn Fn(&C::GlobalModel) -> &C::Model + Send + Sync>,
+    lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut C::Model + Send + Sync>,
 }
 
 impl<C: Component + fmt::Debug> fmt::Debug for ComponentCtx<C> {
@@ -248,26 +270,26 @@ impl<C: Component + ?Sized> Clone for ComponentCtx<C> {
 
 impl<C: Component + ?Sized> ComponentCtx<C> {
     /// Creates a component that is a child of this component
-    pub fn create_child<K: Component<GlobalModel = C::GlobalModel> + 'static, L, LM>(
+    pub fn create_child<K: Component<GlobalModel = C::GlobalModel> + Send + Sync + 'static, L, LM>(
         &self,
         p_to_c: L,
         p_to_c_mut: LM,
         params: K::Params,
     ) -> ComponentHandle<K>
     where
-        L: Fn(&C::Model) -> &K::Model + 'static,
-        LM: Fn(&mut C::Model) -> &mut K::Model + 'static,
-        C::Model: 'static,
-        C::GlobalModel: 'static,
-        K::Model: 'static,
-        K::GlobalModel: 'static,
+        L: Fn(&C::Model) -> &K::Model + Send + Sync + 'static,
+        LM: Fn(&mut C::Model) -> &mut K::Model + Send + Sync + 'static,
+        C::Model: Send + Sync + 'static,
+        C::GlobalModel: Send + Sync + 'static,
+        K::Model: Send + Sync + 'static,
+        K::GlobalModel: Send + Sync + 'static,
     {
         let p_lens = self.lens.clone();
-        let child_lens: Arc<dyn Fn(&C::GlobalModel) -> &K::Model> =
+        let child_lens: Arc<dyn Fn(&C::GlobalModel) -> &K::Model + Send + Sync> =
             Arc::new(move |g| p_to_c(p_lens(g)));
 
         let p_lens_mut = self.lens_mut.clone();
-        let child_lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut K::Model> =
+        let child_lens_mut: Arc<dyn Fn(&mut C::GlobalModel) -> &mut K::Model + Send + Sync> =
             Arc::new(move |g| p_to_c_mut(p_lens_mut(g)));
 
         let id = self.comp_table.write().unwrap().reserve_id();
@@ -337,5 +359,46 @@ impl<C: Component + ?Sized> ComponentCtx<C> {
         let mut global = self.global.write().unwrap();
         let lens_mut = self.lens_mut.clone();
         f(lens_mut(global.get_mut()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct TestModel {
+        _data: i32,
+    }
+
+    #[derive(Debug)]
+    struct TestComponent {
+        value: i32,
+    }
+
+    impl Component for TestComponent {
+        type GlobalModel = TestModel;
+        type Model = i32;
+        type Widget = i32;
+        type Params = i32;
+
+        fn widget(&self) -> Self::Widget {
+            self.value
+        }
+
+        fn build(_ctx: ComponentCtx<Self>, params: Self::Params) -> Self {
+            Self { value: params }
+        }
+    }
+
+    #[test]
+    fn test_component_tree_send_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        fn assert_send_sync<T: Send + Sync>() {}
+
+        assert_send::<ComponentTree<TestModel>>();
+        assert_sync::<ComponentTree<TestModel>>();
+        assert_send_sync::<ComponentTree<TestModel>>();
     }
 }
