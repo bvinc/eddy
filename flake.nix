@@ -21,7 +21,10 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" ];
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+          ];
         };
 
         libs = with pkgs; [
@@ -36,7 +39,6 @@
         ];
       in
       {
-        # nix develop —> environment with Rust 1.88
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
